@@ -16,20 +16,61 @@ TCOCNN_PY/
 └── PreProcessing/  # data loading and standardisation methods
 ```
 
-## Requirements
+## Installation
 
-The toolbox was developed with TensorFlow 2.6 and Keras 2.6. It also uses:
+TCOCNN uses PyTorch and keeps the existing notebook-facing API. Python 3.10 or
+newer is required. Create a virtual environment and install all dependencies
+from `requirements.txt`:
 
-- NumPy
-- SciPy
-- h5py
-- scikit-learn
-- scikit-optimize
-- Matplotlib
-- Jupyter Notebook or JupyterLab
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
 
-Use a Python version that is compatible with TensorFlow 2.6 when reproducing the
-original environment.
+Start JupyterLab from the same environment:
+
+```powershell
+python -m jupyter lab
+```
+
+On Windows, `requirements.txt` installs the CUDA 13.0 build of PyTorch. The
+network automatically uses an NVIDIA GPU when `torch.cuda.is_available()`
+returns `True`; otherwise it runs on the CPU. Check the active PyTorch
+installation with:
+
+```powershell
+python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
+```
+
+The CUDA 13.0 setup was verified with an NVIDIA RTX 3080. For another operating
+system or compute platform, use the selector on the
+[official PyTorch installation page](https://pytorch.org/get-started/locally/).
+
+## Notebook compatibility
+
+The existing notebooks continue to use NumPy arrays with the original
+channels-last layout `(samples, height, width, channels)`. The compatibility
+layer converts these arrays to PyTorch tensors internally, moves batches to the
+selected device, and converts predictions back to NumPy arrays.
+
+The established `TCOCNNClass` methods remain available:
+
+- `build_net`
+- `compile_model`
+- `train`
+- `predict`
+- `copy` and `retrain`
+- `optimize_model`
+- `custom_occlusion`
+- `get_gradient_map`
+
+Run the compatibility tests from the repository root:
+
+```powershell
+python -m unittest discover -s tests -v
+```
 
 ## Example 1: transfer learning
 
