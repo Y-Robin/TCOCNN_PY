@@ -24,8 +24,25 @@ def load_Data_Full(load_struct):
     # Random Flag
     random_flag = load_struct['randomFlag']
 
-    # Normalize Input 
+    # Normalize/transform input. Boolean values preserve the historical API:
+    # True -> per-observation standardization, False -> unchanged input.
+    # String modes additionally support logarithmic sensor compression.
     norm_flag = load_struct['normFlag']
+    if isinstance(norm_flag, str):
+        normalization_mode = norm_flag.strip().lower()
+    else:
+        normalization_mode = "standard" if bool(norm_flag) else "none"
+    valid_normalization_modes = {
+        "none",
+        "standard",
+        "log1p",
+        "log1p_standard",
+    }
+    if normalization_mode not in valid_normalization_modes:
+        raise ValueError(
+            "normFlag must be a boolean or one of: "
+            + ", ".join(sorted(valid_normalization_modes))
+        )
     
     occlusion_flag = load_struct['OcclusionFlag']
     
@@ -58,6 +75,8 @@ def load_Data_Full(load_struct):
         print(method_names[load_method])
         print("RandomFlag")
         print(random_flag)
+        print("Normalization")
+        print(normalization_mode)
 
         # Load Data
         sensor_struct = sio.loadmat(file_name_data)
@@ -81,8 +100,17 @@ def load_Data_Full(load_struct):
                     data_t[j, :] = np.interp(y, x, sensor_cell[lv_sub_sens][j, :])
                 sensor_cell[lv_sub_sens] = data_t
         
-        # Normalize data
-        if norm_flag:
+        # Optional signed log1p compression. The signed form is safe for other
+        # sensor families that may contain negative values.
+        if normalization_mode in {"log1p", "log1p_standard"}:
+            for lv_sub_sens in range(num_sub_sensors):
+                sensor_values = sensor_cell[lv_sub_sens]
+                sensor_cell[lv_sub_sens] = np.sign(sensor_values) * np.log1p(
+                    np.abs(sensor_values)
+                )
+
+        # Historical per-observation standardization.
+        if normalization_mode in {"standard", "log1p_standard"}:
             for i in range(sensor_cell[0].shape[0]):  # iterate over each observation
                 combined_sensors = np.vstack([sensor_cell[lv_sub_sens][i, :] for lv_sub_sens in range(num_sub_sensors)])
                 scaler = StandardScaler()

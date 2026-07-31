@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from skopt.space import Categorical, Real
 
 
 NETWORKS_DIRECTORY = Path(__file__).resolve().parents[1] / "Networks"
@@ -101,6 +102,37 @@ class TCOCNNCompatibilityTests(unittest.TestCase):
             np.zeros((2, 4, 1440, 1), dtype=np.float32)
         )
         self.assertEqual(predictions.shape, (2, 1))
+
+    def test_hyperparameter_optimization_restores_best_validation_model(self):
+        search_space = [
+            Categorical([3, 4], name="n_filter"),
+            Categorical([1, 2], name="section_depth"),
+            Categorical([3, 5], name="kernel"),
+            Categorical([2, 3], name="stride"),
+            Categorical([6, 8], name="num_neurons"),
+            Real(0.0, 0.2, name="drop_out"),
+            Real(5e-4, 1e-3, name="initial_learning_rate"),
+            Categorical([2, 4], name="batch_size"),
+        ]
+        model = TCOCNNClass((4, 64, 1), 1, regression=True, device="cpu")
+        result = model.optimize_model(
+            self.data[:6],
+            self.targets[:6] * 100.0,
+            self.data[6:],
+            self.targets[6:] * 100.0,
+            num_epochs=2,
+            trial_epochs=1,
+            search_space=search_space,
+            random_state=7,
+            plot_results=False,
+        )
+
+        self.assertEqual(len(result.func_vals), 2)
+        self.assertEqual(len(model.optimization_trials), 2)
+        self.assertIsNotNone(model.best_optim_params)
+        self.assertIsNotNone(model.best_batch_size)
+        self.assertTrue(np.isfinite(model.best_validation_rmse))
+        self.assertEqual(model.predict(self.data[6:]).shape, (2, 1))
 
     @unittest.skipUnless(torch.cuda.is_available(), "CUDA is not available")
     def test_automatic_cuda_selection_and_training(self):

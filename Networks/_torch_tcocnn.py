@@ -16,7 +16,7 @@ import torch
 import torch.nn.functional as functional
 from scipy.ndimage import uniform_filter1d
 from skopt import gp_minimize
-from skopt.space import Integer, Real
+from skopt.space import Categorical, Integer, Real
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -269,6 +269,11 @@ class TCOCNNBase:
         self.lr_scheduler: Optional[torch.optim.lr_scheduler.StepLR] = None
         self.criterion: Optional[nn.Module] = None
         self.initial_learning_rate = 1e-3
+        self.optimization_result: Any = None
+        self.optimization_trials: list[dict[str, Any]] = []
+        self.best_optim_params: Optional[dict[str, Any]] = None
+        self.best_batch_size: Optional[int] = None
+        self.best_validation_rmse: Optional[float] = None
 
         if optim_params is not None:
             self.build_net(optim_params)
@@ -568,98 +573,219 @@ class TCOCNNBase:
         validation_data: Any,
         validation_target: Any,
         num_epochs: int = 50,
+        *,
+        trial_epochs: int = 75,
+        search_space: Optional[Sequence[Any]] = None,
+        random_state: int = 42,
+        output_path: Optional[str | Path] = None,
+        plot_results: bool = True,
     ) -> Any:
+        """Optimize the network exclusively against the validation split.
+
+        ``num_epochs`` is retained as the historical name for the number of
+        Bayesian-search trials. ``trial_epochs`` controls the training length
+        of every candidate. Targets are passed through unchanged; callers can
+        therefore optimize directly in the physical target unit.
+        """
         n_calls = int(num_epochs)
         if n_calls < 1:
             raise ValueError("num_epochs must be at least 1.")
+        if int(trial_epochs) < 1:
+            raise ValueError("trial_epochs must be at least 1.")
+
+        if search_space is None:
+            search_space = [
+                Integer(50, 150, name="n_filter"),
+                Integer(3, 5, name="section_depth"),
+                Integer(5, 15, name="kernel"),
+                Integer(2, 5, name="stride"),
+                Integer(800, 1500, name="num_neurons"),
+                Real(0.1, 0.5, name="drop_out"),
+                Real(
+                    1e-5,
+                    1e-3,
+                    prior="log-uniform",
+                    name="initial_learning_rate",
+                ),
+                Categorical([16, 32, 64], name="batch_size"),
+            ]
+
+        expected_names = {
+            "n_filter",
+            "section_depth",
+            "kernel",
+            "stride",
+            "num_neurons",
+            "drop_out",
+            "initial_learning_rate",
+            "batch_size",
+        }
+        dimension_names = [getattr(dimension, "name", None) for dimension in search_space]
+        if set(dimension_names) != expected_names:
+            raise ValueError(
+                "search_space must contain exactly these named dimensions: "
+                + ", ".join(sorted(expected_names))
+            )
+
+        trials: list[dict[str, Any]] = []
+        best_trial: dict[str, Any] = {"validation_rmse": float("inf")}
 
         def objective(params: Sequence[float]) -> float:
+            trial_number = len(trials) + 1
+            candidate = dict(zip(dimension_names, params))
+            for name in (
+                "n_filter",
+                "section_depth",
+                "kernel",
+                "stride",
+                "num_neurons",
+                "batch_size",
+            ):
+                candidate[name] = int(candidate[name])
+            candidate["drop_out"] = float(candidate["drop_out"])
+            candidate["initial_learning_rate"] = float(
+                candidate["initial_learning_rate"]
+            )
+            network_params = {
+                name: value
+                for name, value in candidate.items()
+                if name != "batch_size"
+            }
             try:
-                self.build_net(
-                    {
-                        "n_filter": int(params[0]),
-                        "section_depth": int(params[1]),
-                        "kernel": int(params[2]),
-                        "stride": int(params[3]),
-                        "num_neurons": int(params[4]),
-                        "drop_out": float(params[5]),
-                    }
+                np.random.seed(int(random_state))
+                torch.manual_seed(int(random_state))
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed_all(int(random_state))
+
+                self.build_net(network_params)
+                self.compile_model(network_params["initial_learning_rate"])
+                self.train(
+                    data,
+                    target,
+                    validation_data=(validation_data, validation_target),
+                    epochs=int(trial_epochs),
+                    batch_size=candidate["batch_size"],
                 )
-                self.compile_model(float(params[6]))
-                self.train(data, target)
                 validation_loss, _ = self._evaluate(
                     validation_data,
                     validation_target,
-                    batch_size=256,
+                    batch_size=candidate["batch_size"],
                 )
-                return validation_loss
-            except (torch.cuda.OutOfMemoryError, MemoryError):
+                validation_rmse = float(math.sqrt(max(0.0, validation_loss)))
+                model = self._require_model()
+                record = {
+                    "trial": trial_number,
+                    "validation_rmse": validation_rmse,
+                    "parameter_count": int(sum(p.numel() for p in model.parameters())),
+                    **candidate,
+                }
+                trials.append(record)
+                if validation_rmse < best_trial["validation_rmse"]:
+                    best_trial.clear()
+                    best_trial.update(
+                        {
+                            **record,
+                            "state_dict": {
+                                name: value.detach().cpu().clone()
+                                for name, value in model.state_dict().items()
+                            },
+                            "history": copy.deepcopy(self.history),
+                        }
+                    )
+                print(
+                    f"Trial {trial_number:02d}/{n_calls}: "
+                    f"validation RMSE={validation_rmse:.6g}, "
+                    f"parameters={record['parameter_count']:,}"
+                )
+                return validation_rmse
+            except (torch.cuda.OutOfMemoryError, MemoryError) as error:
+                trials.append(
+                    {
+                        "trial": trial_number,
+                        "validation_rmse": float("inf"),
+                        "error": str(error),
+                        **candidate,
+                    }
+                )
                 return float("inf")
             except RuntimeError as error:
                 if "out of memory" not in str(error).lower():
                     raise
+                trials.append(
+                    {
+                        "trial": trial_number,
+                        "validation_rmse": float("inf"),
+                        "error": str(error),
+                        **candidate,
+                    }
+                )
                 return float("inf")
             finally:
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
-        space = [
-            Integer(50, 150, name="n_filter"),
-            Integer(3, 5, name="section_depth"),
-            Integer(5, 15, name="kernel"),
-            Integer(2, 5, name="stride"),
-            Integer(800, 1500, name="num_neurons"),
-            Real(0.1, 0.5, name="drop_out"),
-            Real(
-                1e-5,
-                1e-3,
-                prior="log-uniform",
-                name="initial_learning_rate",
-            ),
-        ]
         result = gp_minimize(
             objective,
-            space,
+            search_space,
             n_calls=n_calls,
             n_initial_points=min(10, n_calls),
-            random_state=42,
+            random_state=int(random_state),
         )
-        best = result.x
+        if "state_dict" not in best_trial:
+            raise RuntimeError("Every hyperparameter trial failed.")
+
         best_params = {
-            "n_filter": int(best[0]),
-            "section_depth": int(best[1]),
-            "kernel": int(best[2]),
-            "stride": int(best[3]),
-            "num_neurons": int(best[4]),
-            "drop_out": float(best[5]),
-            "initial_learning_rate": float(best[6]),
+            name: best_trial[name]
+            for name in dimension_names
+            if name != "batch_size"
         }
         self.build_net(best_params)
         self.compile_model(best_params["initial_learning_rate"])
-        self.train(data, target)
+        self._require_model().load_state_dict(best_trial["state_dict"])
+        self.history = best_trial["history"]
+        self.trainFlag = True
+        self.optimization_result = result
+        self.optimization_trials = trials
+        self.best_optim_params = copy.deepcopy(best_params)
+        self.best_batch_size = int(best_trial["batch_size"])
+        self.best_validation_rmse = float(best_trial["validation_rmse"])
 
-        output_path = (
-            Path(__file__).resolve().parents[1]
-            / "Evaluation"
-            / "Results"
-            / "bestParams.json"
-        )
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with output_path.open("w", encoding="utf-8") as parameter_file:
-            json.dump(best_params, parameter_file, indent=2)
+        if output_path is not None:
+            report_path = Path(output_path)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            serializable_trials = []
+            for trial in trials:
+                serializable_trial = {
+                    key: (None if isinstance(value, float) and not math.isfinite(value) else value)
+                    for key, value in trial.items()
+                }
+                serializable_trials.append(serializable_trial)
+            with report_path.open("w", encoding="utf-8") as parameter_file:
+                json.dump(
+                    {
+                        "best_params": best_params,
+                        "best_batch_size": self.best_batch_size,
+                        "best_validation_rmse": self.best_validation_rmse,
+                        "trial_epochs": int(trial_epochs),
+                        "trials": serializable_trials,
+                    },
+                    parameter_file,
+                    indent=2,
+                )
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(
-            range(1, len(result.func_vals) + 1),
-            result.func_vals,
-            marker="o",
-        )
-        plt.xlabel("Iteration")
-        plt.ylabel("Validation Error")
-        plt.title("Validation Errors Over Iterations")
-        plt.grid(True)
-        plt.show()
+        if plot_results:
+            plt.figure(figsize=(10, 6))
+            plt.plot(
+                range(1, len(result.func_vals) + 1),
+                result.func_vals,
+                marker="o",
+            )
+            plt.xlabel("Iteration")
+            plt.ylabel("Validation RMSE")
+            plt.title("Validation RMSE Over Hyperparameter Trials")
+            plt.grid(True)
+            plt.show()
         return result
 
     def custom_occlusion(

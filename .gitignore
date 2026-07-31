@@ -13,9 +13,17 @@ venv/
 /Data/*
 !/Data/.gitkeep
 
-# Generated evaluation results, including all nested directories.
-/Evaluation/Results/*
-!/Evaluation/Results/.gitkeep
+# Evaluation privacy policy:
+# - Existing public evaluation folders are explicitly allowed.
+# - Every other/new evaluation subfolder is private by default. Keep all
+#   partner-specific notebooks, scripts, prepared files, and results together
+#   inside one such folder (for example Evaluation/<partner>/).
+/Evaluation/*/
+!/Evaluation/Field/
+!/Evaluation/VOC4IAQ/
+
+# Results belong to their individual evaluation folder and are always local.
+/Evaluation/**/Results/
 
 # Generated or local parameter sets.
 **/*[Pp]arams*.json
