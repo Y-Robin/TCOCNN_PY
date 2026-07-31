@@ -1,3 +1,24 @@
+# Python
 __pycache__/
-*.asv
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# MATLAB files and autosaves
 *.mat
+*.asv
+
+# Local datasets: keep only the directory placeholder in Git.
+/Data/*
+!/Data/.gitkeep
+
+# Generated evaluation results, including all nested directories.
+/Evaluation/Results/*
+!/Evaluation/Results/.gitkeep
+
+# Generated or local parameter sets.
+**/*[Pp]arams*.json
+**/*[Pp]arameters*.json
+**/[Pp]arameter[Ss]ets/
+**/[Pp]arameter_[Ss]ets/
