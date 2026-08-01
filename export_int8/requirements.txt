@@ -1,0 +1,8 @@
+# Install this file in a separate converter environment. The project PyTorch
+# environment remains defined by ../requirements.txt and is intentionally not
+# mixed with TensorFlow's stricter NumPy/protobuf constraints.
+numpy==1.26.4
+onnx==1.17.0
+onnxruntime==1.18.1
+tensorflow==2.19.0
+ai-edge-litert==2.1.6

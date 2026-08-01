@@ -1,0 +1,156 @@
+{
+  "dataset": "sklearn.datasets.load_diabetes",
+  "public_dataset": true,
+  "distribution": "bundled with scikit-learn; no network download",
+  "samples": {
+    "train": 309,
+    "val": 66,
+    "test": 67
+  },
+  "parameters": 193,
+  "target_scaled": false,
+  "metrics": {
+    "train": {
+      "MAE": 39.95403593489267,
+      "RMSE": 50.59788143762218,
+      "R2": 0.5627881279318303
+    },
+    "val": {
+      "MAE": 44.45236081788034,
+      "RMSE": 55.55126991716456,
+      "R2": 0.44817350850672666
+    },
+    "test": {
+      "MAE": 52.98136992952717,
+      "RMSE": 60.173431574996684,
+      "R2": 0.4454535213804912
+    }
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_mse": 29260.419921875,
+      "validation_mse": 26354.94140625
+    },
+    {
+      "epoch": 26,
+      "train_mse": 28217.552734375,
+      "validation_mse": 25238.6953125
+    },
+    {
+      "epoch": 51,
+      "train_mse": 25104.078125,
+      "validation_mse": 21973.5625
+    },
+    {
+      "epoch": 76,
+      "train_mse": 19207.955078125,
+      "validation_mse": 16125.5703125
+    },
+    {
+      "epoch": 101,
+      "train_mse": 12289.6025390625,
+      "validation_mse": 9939.8056640625
+    },
+    {
+      "epoch": 126,
+      "train_mse": 7536.34228515625,
+      "validation_mse": 6483.6962890625
+    },
+    {
+      "epoch": 151,
+      "train_mse": 5675.66650390625,
+      "validation_mse": 5750.28759765625
+    },
+    {
+      "epoch": 176,
+      "train_mse": 4905.87890625,
+      "validation_mse": 5573.91455078125
+    },
+    {
+      "epoch": 201,
+      "train_mse": 4408.08740234375,
+      "validation_mse": 5321.0546875
+    },
+    {
+      "epoch": 226,
+      "train_mse": 4043.566650390625,
+      "validation_mse": 5058.51513671875
+    },
+    {
+      "epoch": 251,
+      "train_mse": 3739.10888671875,
+      "validation_mse": 4760.3193359375
+    },
+    {
+      "epoch": 276,
+      "train_mse": 3476.980224609375,
+      "validation_mse": 4441.9150390625
+    },
+    {
+      "epoch": 301,
+      "train_mse": 3260.9951171875,
+      "validation_mse": 4149.96240234375
+    },
+    {
+      "epoch": 326,
+      "train_mse": 3091.4267578125,
+      "validation_mse": 3901.340087890625
+    },
+    {
+      "epoch": 351,
+      "train_mse": 2965.515380859375,
+      "validation_mse": 3691.596435546875
+    },
+    {
+      "epoch": 376,
+      "train_mse": 2870.955810546875,
+      "validation_mse": 3516.75927734375
+    },
+    {
+      "epoch": 401,
+      "train_mse": 2798.3046875,
+      "validation_mse": 3389.386474609375
+    },
+    {
+      "epoch": 426,
+      "train_mse": 2743.22119140625,
+      "validation_mse": 3295.3720703125
+    },
+    {
+      "epoch": 451,
+      "train_mse": 2695.968505859375,
+      "validation_mse": 3235.62841796875
+    },
+    {
+      "epoch": 476,
+      "train_mse": 2658.76513671875,
+      "validation_mse": 3194.49365234375
+    },
+    {
+      "epoch": 501,
+      "train_mse": 2631.295166015625,
+      "validation_mse": 3161.038330078125
+    },
+    {
+      "epoch": 526,
+      "train_mse": 2609.873291015625,
+      "validation_mse": 3138.645263671875
+    },
+    {
+      "epoch": 551,
+      "train_mse": 2591.931640625,
+      "validation_mse": 3116.413330078125
+    },
+    {
+      "epoch": 576,
+      "train_mse": 2575.66064453125,
+      "validation_mse": 3099.970458984375
+    },
+    {
+      "epoch": 600,
+      "train_mse": 2560.722412109375,
+      "validation_mse": 3085.94384765625
+    }
+  ]
+}

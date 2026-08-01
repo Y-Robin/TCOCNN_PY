@@ -4,6 +4,8 @@ __pycache__/
 .ipynb_checkpoints/
 .venv/
 venv/
+**/.venv-*/
+**/.work/
 
 # MATLAB files and autosaves
 *.mat
@@ -30,3 +32,14 @@ venv/
 **/*[Pp]arameters*.json
 **/[Pp]arameter[Ss]ets/
 **/[Pp]arameter_[Ss]ets/
+
+# Deployment privacy policy:
+# - Root documentation and the harmless example folders remain public.
+# - Every real/model-specific subfolder is private by default because scripts,
+#   weights, calibration ranges, metrics, and plots can reveal partner data.
+/export_int8/*/
+!/export_int8/example/
+!/export_int8/example/**
+/artifacts/*/
+!/artifacts/example/
+!/artifacts/example/**

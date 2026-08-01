@@ -1,0 +1,11 @@
+{
+  "example_only": true,
+  "model_name": "replace_with_local_model_name",
+  "checkpoint": "path/to/private/checkpoint.pt",
+  "artifact_directory": "artifacts/replace_with_local_model_name",
+  "representative_split": "train",
+  "fixed_batch_size": 1,
+  "require_int8_input": true,
+  "require_int8_output": true,
+  "retrain": false
+}

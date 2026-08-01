@@ -1,0 +1,96 @@
+{
+  "architecture": "Linear(10,16) -> ReLU -> Linear(16,1)",
+  "checkpoint": "export_int8\\example\\tiny_diabetes_regressor.pt",
+  "comparison": {
+    "int8_vs_pytorch": {
+      "MAE": 0.5168760498957847,
+      "R2": 0.9998901110534743,
+      "RMSE": 0.6733836839709885
+    },
+    "prediction_correlation": 0.999948418450431,
+    "pytorch": {
+      "MAE": 52.98136992952717,
+      "R2": 0.4454535213804912,
+      "RMSE": 60.173431574996684
+    },
+    "runtime": "ai_edge_litert BUILTIN_REF, delegates disabled",
+    "samples": 67,
+    "tflite_int8": {
+      "MAE": 52.91693542252725,
+      "R2": 0.44618266336461043,
+      "RMSE": 60.13385923195983
+    }
+  },
+  "cpp_array": {
+    "array_bytes": 2344,
+    "exact_match": true,
+    "file_bytes": 2344
+  },
+  "dataset": "sklearn.datasets.load_diabetes",
+  "example_only": true,
+  "onnx": {
+    "opset": 17,
+    "path": "tiny_diabetes_regressor.onnx",
+    "sha256": "883f3de25a2a326036c5a534fd7b9a1cf576322067d3234a97dc1cc43640847f",
+    "size_bytes": 1238
+  },
+  "parameters": 193,
+  "public_dataset": true,
+  "representative_samples": 309,
+  "representative_split": "train",
+  "retrained_during_export": false,
+  "tflite_int8": {
+    "activations_dtype": "int8",
+    "float_parity": {
+      "onnxruntime_max_abs_error": 3.0517578125e-05,
+      "passed": true,
+      "samples": 32,
+      "tensorflow_max_abs_error": 3.0517578125e-05,
+      "tolerance": 0.0001
+    },
+    "fully_integer_verified": true,
+    "input": {
+      "dtype": "int8",
+      "scale": 0.026857636868953705,
+      "shape": [
+        1,
+        10
+      ],
+      "zero_point": -14
+    },
+    "output": {
+      "dtype": "int8",
+      "scale": 1.279902458190918,
+      "shape": [
+        1,
+        1
+      ],
+      "zero_point": -128
+    },
+    "path": "tiny_diabetes_regressor_int8.tflite",
+    "sha256": "5db91469e00711260d274710a855d760718f776fc7b021903d71a7ec742e58ff",
+    "size_bytes": 2344,
+    "tensor_dtype_counts": {
+      "int32": 2,
+      "int8": 5
+    },
+    "weights_dtype": "int8"
+  },
+  "training_metrics": {
+    "test": {
+      "MAE": 52.98136992952717,
+      "R2": 0.4454535213804912,
+      "RMSE": 60.173431574996684
+    },
+    "train": {
+      "MAE": 39.95403593489267,
+      "R2": 0.5627881279318303,
+      "RMSE": 50.59788143762218
+    },
+    "val": {
+      "MAE": 44.45236081788034,
+      "R2": 0.44817350850672666,
+      "RMSE": 55.55126991716456
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "float_parity": {
+    "onnxruntime_max_abs_error": 3.0517578125e-05,
+    "passed": true,
+    "samples": 32,
+    "tensorflow_max_abs_error": 3.0517578125e-05,
+    "tolerance": 0.0001
+  },
+  "fully_integer_verified": true,
+  "input": {
+    "dtype": "int8",
+    "scale": 0.026857636868953705,
+    "shape": [
+      1,
+      10
+    ],
+    "zero_point": -14
+  },
+  "output": {
+    "dtype": "int8",
+    "scale": 1.279902458190918,
+    "shape": [
+      1,
+      1
+    ],
+    "zero_point": -128
+  },
+  "tensor_dtype_counts": {
+    "int32": 2,
+    "int8": 5
+  }
+}
