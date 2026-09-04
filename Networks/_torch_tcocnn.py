@@ -79,6 +79,74 @@ class SamePadConv2d(nn.Module):
         return self.conv(inputs)
 
 
+class ResidualConvBlock(nn.Module):
+    """Configurable stride-1 convolution block used by TCOCNN V3.
+
+    All convolutions in one block use the same filter depth.  When residual
+    connections are enabled, a learnable 1x1 projection aligns the shortcut
+    channels where necessary.  Downsampling deliberately remains outside the
+    block so the shortcut and feature path always have identical shapes.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        convolutions: int,
+        residual: bool,
+    ) -> None:
+        super().__init__()
+        if convolutions < 1:
+            raise ValueError("convolutions must be at least one.")
+        self.use_residual = bool(residual)
+        self.convolutions = nn.ModuleList()
+        self.normalizations = nn.ModuleList()
+        current_channels = int(in_channels)
+        for _ in range(int(convolutions)):
+            self.convolutions.append(
+                SamePadConv2d(
+                    current_channels,
+                    int(out_channels),
+                    kernel_size=(1, int(kernel_size)),
+                    stride=(1, 1),
+                )
+            )
+            self.normalizations.append(
+                nn.BatchNorm2d(int(out_channels), momentum=0.01)
+            )
+            current_channels = int(out_channels)
+        self.projection: Optional[nn.Sequential]
+        if self.use_residual and int(in_channels) != int(out_channels):
+            self.projection = nn.Sequential(
+                SamePadConv2d(
+                    int(in_channels),
+                    int(out_channels),
+                    kernel_size=(1, 1),
+                    stride=(1, 1),
+                ),
+                nn.BatchNorm2d(int(out_channels), momentum=0.01),
+            )
+        else:
+            self.projection = None
+        self.activation = nn.ReLU()
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        shortcut = inputs
+        outputs = inputs
+        for index, (convolution, normalization) in enumerate(
+            zip(self.convolutions, self.normalizations)
+        ):
+            outputs = normalization(convolution(outputs))
+            if index + 1 < len(self.convolutions) or not self.use_residual:
+                outputs = self.activation(outputs)
+        if self.use_residual:
+            if self.projection is not None:
+                shortcut = self.projection(shortcut)
+            outputs = self.activation(outputs + shortcut)
+        return outputs
+
+
 class TCOCNNModule(nn.Module):
     """Internal network; public input conversion lives in ``TCOCNNBase``."""
 
@@ -98,7 +166,7 @@ class TCOCNNModule(nn.Module):
         num_convs = int(optim_params["section_depth"])
         width_fc = int(optim_params["num_neurons"])
 
-        if architecture not in {"strided", "pooled"}:
+        if architecture not in {"strided", "pooled", "v2", "v3"}:
             raise ValueError(f"Unknown TCOCNN architecture: {architecture}")
         if min(height, width, channels, n_filters, num_convs, width_fc) < 1:
             raise ValueError("Network dimensions must be positive integers.")
@@ -108,7 +176,66 @@ class TCOCNNModule(nn.Module):
             raise ValueError("drop_out must be in the interval [0, 1).")
 
         feature_layers: list[nn.Module] = []
-        if architecture == "strided":
+        if architecture == "v3":
+            convolutions_per_block = int(optim_params["convs_per_block"])
+            channel_growth = int(optim_params["channel_growth"])
+            residual = bool(optim_params["residual"])
+            if convolutions_per_block < 1 or channel_growth < 0:
+                raise ValueError(
+                    "convs_per_block must be positive and channel_growth non-negative."
+                )
+            in_channels = channels
+            for section_index in range(num_convs):
+                out_channels = n_filters + section_index * channel_growth
+                feature_layers.extend(
+                    [
+                        ResidualConvBlock(
+                            in_channels,
+                            out_channels,
+                            first_kernel_size,
+                            convolutions_per_block,
+                            residual,
+                        ),
+                        nn.MaxPool2d(
+                            kernel_size=(1, first_stride),
+                            stride=(1, first_stride),
+                            ceil_mode=True,
+                        ),
+                    ]
+                )
+                in_channels = out_channels
+        elif architecture == "v2":
+            in_channels = channels
+            for section_index in range(num_convs):
+                # V2 uses a VGG-style block: two stride-1 convolutions with the
+                # same channel depth, followed by explicit max pooling.
+                out_channels = n_filters * (section_index + 1)
+                for convolution_index in range(2):
+                    feature_layers.extend(
+                        [
+                            SamePadConv2d(
+                                (
+                                    in_channels
+                                    if convolution_index == 0
+                                    else out_channels
+                                ),
+                                out_channels,
+                                kernel_size=(1, first_kernel_size),
+                                stride=(1, 1),
+                            ),
+                            nn.BatchNorm2d(out_channels, momentum=0.01),
+                            nn.ReLU(),
+                        ]
+                    )
+                feature_layers.append(
+                    nn.MaxPool2d(
+                        kernel_size=(1, first_stride),
+                        stride=(1, first_stride),
+                        ceil_mode=True,
+                    )
+                )
+                in_channels = out_channels
+        elif architecture == "strided":
             feature_layers.extend(
                 [
                     SamePadConv2d(
@@ -135,65 +262,68 @@ class TCOCNNModule(nn.Module):
                 ]
             )
 
-        feature_layers.extend(
-            [
-                SamePadConv2d(
-                    n_filters,
-                    n_filters,
-                    kernel_size=(1, first_kernel_size),
-                ),
-                nn.BatchNorm2d(n_filters, momentum=0.01),
-                nn.ReLU(),
-            ]
-        )
-
-        in_channels = n_filters
-        for section_index in range(1, num_convs):
-            out_channels = n_filters * (section_index + 1)
-            if architecture == "strided":
-                feature_layers.extend(
-                    [
-                        SamePadConv2d(
-                            in_channels,
-                            out_channels,
-                            kernel_size=(1, 2),
-                            stride=(1, 2),
-                        ),
-                        nn.BatchNorm2d(out_channels, momentum=0.01),
-                        nn.ReLU(),
-                    ]
-                )
-            else:
-                feature_layers.extend(
-                    [
-                        SamePadConv2d(
-                            in_channels,
-                            out_channels,
-                            kernel_size=(1, 2),
-                        ),
-                        nn.MaxPool2d(kernel_size=(1, 2)),
-                        nn.BatchNorm2d(out_channels, momentum=0.01),
-                        nn.ReLU(),
-                    ]
-                )
-
+        if architecture not in {"v2", "v3"}:
             feature_layers.extend(
                 [
                     SamePadConv2d(
-                        out_channels,
-                        out_channels,
-                        kernel_size=(1, 2),
+                        n_filters,
+                        n_filters,
+                        kernel_size=(1, first_kernel_size),
                     ),
-                    nn.BatchNorm2d(out_channels, momentum=0.01),
+                    nn.BatchNorm2d(n_filters, momentum=0.01),
                     nn.ReLU(),
                 ]
             )
-            in_channels = out_channels
+
+            in_channels = n_filters
+            for section_index in range(1, num_convs):
+                out_channels = n_filters * (section_index + 1)
+                if architecture == "strided":
+                    feature_layers.extend(
+                        [
+                            SamePadConv2d(
+                                in_channels,
+                                out_channels,
+                                kernel_size=(1, 2),
+                                stride=(1, 2),
+                            ),
+                            nn.BatchNorm2d(out_channels, momentum=0.01),
+                            nn.ReLU(),
+                        ]
+                    )
+                else:
+                    feature_layers.extend(
+                        [
+                            SamePadConv2d(
+                                in_channels,
+                                out_channels,
+                                kernel_size=(1, 2),
+                            ),
+                            nn.MaxPool2d(kernel_size=(1, 2)),
+                            nn.BatchNorm2d(out_channels, momentum=0.01),
+                            nn.ReLU(),
+                        ]
+                    )
+
+                feature_layers.extend(
+                    [
+                        SamePadConv2d(
+                            out_channels,
+                            out_channels,
+                            kernel_size=(1, 2),
+                        ),
+                        nn.BatchNorm2d(out_channels, momentum=0.01),
+                        nn.ReLU(),
+                    ]
+                )
+                in_channels = out_channels
 
         self.features = nn.Sequential(*feature_layers)
         self.global_pool: nn.Module
         if architecture == "pooled":
             self.global_pool = nn.AdaptiveMaxPool2d((1, 1))
+        elif architecture in {"v2", "v3"}:
+            self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         else:
             self.global_pool = nn.Identity()
 
@@ -240,6 +370,29 @@ class TCOCNNBase:
 
     architecture = "strided"
     l2_reg = 0.0001
+    network_parameter_names = frozenset(
+        {
+            "n_filter",
+            "section_depth",
+            "kernel",
+            "stride",
+            "num_neurons",
+            "drop_out",
+        }
+    )
+    integer_hyperparameter_names = frozenset(
+        {
+            "n_filter",
+            "section_depth",
+            "kernel",
+            "stride",
+            "num_neurons",
+            "batch_size",
+        }
+    )
+    float_hyperparameter_names = frozenset(
+        {"drop_out", "initial_learning_rate"}
+    )
 
     def __init__(
         self,
@@ -279,14 +432,7 @@ class TCOCNNBase:
             self.build_net(optim_params)
 
     def build_net(self, optim: dict[str, Any]) -> None:
-        required = {
-            "n_filter",
-            "section_depth",
-            "kernel",
-            "stride",
-            "num_neurons",
-            "drop_out",
-        }
+        required = set(self.network_parameter_names)
         missing = sorted(required.difference(optim))
         if missing:
             raise KeyError(f"Missing network parameters: {', '.join(missing)}")
@@ -321,7 +467,7 @@ class TCOCNNBase:
             parameter_groups.append(
                 {
                     "params": decay,
-                    "weight_decay": self.l2_reg if self.architecture == "strided" else 0.0,
+                    "weight_decay": self.l2_reg,
                 }
             )
         if no_decay:
@@ -566,6 +712,24 @@ class TCOCNNBase:
         )
         print("Retraining completed.")
 
+    def default_search_space(self) -> list[Any]:
+        """Return the architecture-specific Bayesian optimization space."""
+        return [
+            Integer(50, 150, name="n_filter"),
+            Integer(3, 5, name="section_depth"),
+            Integer(5, 15, name="kernel"),
+            Integer(2, 5, name="stride"),
+            Integer(800, 1500, name="num_neurons"),
+            Real(0.1, 0.5, name="drop_out"),
+            Real(
+                1e-5,
+                1e-3,
+                prior="log-uniform",
+                name="initial_learning_rate",
+            ),
+            Categorical([16, 32, 64], name="batch_size"),
+        ]
+
     def optimize_model(
         self,
         data: Any,
@@ -594,32 +758,11 @@ class TCOCNNBase:
             raise ValueError("trial_epochs must be at least 1.")
 
         if search_space is None:
-            search_space = [
-                Integer(50, 150, name="n_filter"),
-                Integer(3, 5, name="section_depth"),
-                Integer(5, 15, name="kernel"),
-                Integer(2, 5, name="stride"),
-                Integer(800, 1500, name="num_neurons"),
-                Real(0.1, 0.5, name="drop_out"),
-                Real(
-                    1e-5,
-                    1e-3,
-                    prior="log-uniform",
-                    name="initial_learning_rate",
-                ),
-                Categorical([16, 32, 64], name="batch_size"),
-            ]
+            search_space = self.default_search_space()
 
-        expected_names = {
-            "n_filter",
-            "section_depth",
-            "kernel",
-            "stride",
-            "num_neurons",
-            "drop_out",
-            "initial_learning_rate",
-            "batch_size",
-        }
+        expected_names = set(self.network_parameter_names).union(
+            {"initial_learning_rate", "batch_size"}
+        )
         dimension_names = [getattr(dimension, "name", None) for dimension in search_space]
         if set(dimension_names) != expected_names:
             raise ValueError(
@@ -632,20 +775,14 @@ class TCOCNNBase:
 
         def objective(params: Sequence[float]) -> float:
             trial_number = len(trials) + 1
-            candidate = dict(zip(dimension_names, params))
-            for name in (
-                "n_filter",
-                "section_depth",
-                "kernel",
-                "stride",
-                "num_neurons",
-                "batch_size",
-            ):
+            candidate = {
+                name: (value.item() if isinstance(value, np.generic) else value)
+                for name, value in zip(dimension_names, params)
+            }
+            for name in self.integer_hyperparameter_names.intersection(candidate):
                 candidate[name] = int(candidate[name])
-            candidate["drop_out"] = float(candidate["drop_out"])
-            candidate["initial_learning_rate"] = float(
-                candidate["initial_learning_rate"]
-            )
+            for name in self.float_hyperparameter_names.intersection(candidate):
+                candidate[name] = float(candidate[name])
             network_params = {
                 name: value
                 for name, value in candidate.items()

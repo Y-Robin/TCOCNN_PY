@@ -43,3 +43,7 @@ venv/
 /artifacts/*/
 !/artifacts/example/
 !/artifacts/example/**
+
+/output/*
+/tools/*
+/tmp/*

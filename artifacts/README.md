@@ -6,8 +6,11 @@ their scripts below `export_int8/`.
 ```text
 artifacts/
 |-- README.md
-|-- example/                  # runnable public dataset/model example
-`-- <model-or-partner>/       # private models, metadata, arrays, and plots
+|-- example/                         # runnable public dataset/model example
+`-- <model-or-partner>/              # private model or partner
+    `-- <gas>/                       # optional gas-specific package
+        `-- calibration-<n>/         # explicit calibration identity
+            `-- <precision>/<model>/<version>/
 ```
 
 For a C++ deployment that embeds the model, the compiler normally needs only

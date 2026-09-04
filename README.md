@@ -23,6 +23,7 @@ deployment models, metrics, and plots are local-only. The runnable examples
 under `export_int8/example/` and `artifacts/example/` use only scikit-learn's
 bundled public diabetes dataset and expose no partner values.
 
+
 ## Main installation
 
 Python 3.10 or newer is required. From the repository root:
@@ -66,6 +67,17 @@ The established `TCOCNNClass` API remains available, including:
 - `build_net`, `compile_model`, `train`, and `predict`;
 - `copy`, `retrain`, and `optimize_model`;
 - `custom_occlusion` and `get_gradient_map`.
+
+`Networks/TCOCNNv2.py` provides the same API with paired stride-1 convolution
+blocks, max-pooling downsampling, and global average pooling before the dense
+head. For compatibility, its `stride` hyperparameter controls the pooling
+factor rather than a convolution stride.
+
+`Networks/TCOCNNv3.py` extends that API with a searchable number of stride-1
+convolutions per block, optional residual shortcuts with automatic 1x1 channel
+projection, configurable channel growth, max-pooling downsampling, and global
+average pooling. Its class-specific default search space is returned by
+`default_search_space()` and is used automatically by `optimize_model()`.
 
 Run the tests from the repository root:
 

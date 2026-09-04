@@ -12,6 +12,9 @@ sys.path.insert(0, str(NETWORKS_DIRECTORY))
 
 from TCOCNN import TCOCNNClass
 from TCOCNNs import TCOCNNsClass
+from TCOCNNv2 import TCOCNNv2Class
+from TCOCNNv3 import TCOCNNv3Class
+from _torch_tcocnn import ResidualConvBlock, SamePadConv2d
 
 
 SMALL_PARAMS = {
@@ -21,6 +24,13 @@ SMALL_PARAMS = {
     "stride": 2,
     "num_neurons": 8,
     "drop_out": 0.1,
+}
+
+SMALL_V3_PARAMS = {
+    **SMALL_PARAMS,
+    "convs_per_block": 3,
+    "channel_growth": 2,
+    "residual": True,
 }
 
 
@@ -88,6 +98,40 @@ class TCOCNNCompatibilityTests(unittest.TestCase):
             atol=1e-6,
         )
 
+    def test_v2_uses_paired_convolutions_and_global_average_pooling(self):
+        model = TCOCNNv2Class((4, 64, 1), 1, regression=True, device="cpu")
+        model.build_net(SMALL_PARAMS)
+        module = model._require_model()
+
+        convolutions = [
+            layer for layer in module.features if isinstance(layer, SamePadConv2d)
+        ]
+        pools = [
+            layer
+            for layer in module.features
+            if isinstance(layer, torch.nn.MaxPool2d)
+        ]
+        self.assertEqual(len(convolutions), 2 * SMALL_PARAMS["section_depth"])
+        self.assertEqual(len(pools), SMALL_PARAMS["section_depth"])
+        self.assertTrue(all(layer.stride == (1, 1) for layer in convolutions))
+        for section_index in range(SMALL_PARAMS["section_depth"]):
+            first, second = convolutions[2 * section_index : 2 * section_index + 2]
+            self.assertEqual(first.conv.out_channels, second.conv.out_channels)
+        self.assertIsInstance(module.global_pool, torch.nn.AdaptiveAvgPool2d)
+        self.assertEqual(module.fc1.in_features, convolutions[-1].conv.out_channels)
+
+        model.compile_model(1e-3)
+        model.train(self.data, self.targets, epochs=1, batch_size=4)
+        predictions = model.predict(self.data[:2])
+        self.assertEqual(predictions.shape, (2, 1))
+        self.assertTrue(np.isfinite(predictions).all())
+        np.testing.assert_allclose(
+            predictions,
+            model.copy().predict(self.data[:2]),
+            rtol=1e-6,
+            atol=1e-6,
+        )
+
     def test_original_notebook_input_shape(self):
         params = {
             **SMALL_PARAMS,
@@ -102,6 +146,48 @@ class TCOCNNCompatibilityTests(unittest.TestCase):
             np.zeros((2, 4, 1440, 1), dtype=np.float32)
         )
         self.assertEqual(predictions.shape, (2, 1))
+
+    def test_v3_uses_configurable_residual_blocks_and_global_average_pooling(self):
+        model = TCOCNNv3Class((4, 64, 1), 1, regression=True, device="cpu")
+        model.build_net(SMALL_V3_PARAMS)
+        module = model._require_model()
+
+        blocks = [
+            layer for layer in module.features if isinstance(layer, ResidualConvBlock)
+        ]
+        pools = [
+            layer for layer in module.features if isinstance(layer, torch.nn.MaxPool2d)
+        ]
+        self.assertEqual(len(blocks), SMALL_V3_PARAMS["section_depth"])
+        self.assertEqual(len(pools), SMALL_V3_PARAMS["section_depth"])
+        self.assertTrue(all(block.use_residual for block in blocks))
+        self.assertTrue(
+            all(
+                len(block.convolutions) == SMALL_V3_PARAMS["convs_per_block"]
+                for block in blocks
+            )
+        )
+        self.assertEqual(blocks[0].convolutions[0].conv.out_channels, 4)
+        self.assertEqual(blocks[1].convolutions[0].conv.out_channels, 6)
+        self.assertTrue(
+            all(
+                convolution.stride == (1, 1)
+                for block in blocks
+                for convolution in block.convolutions
+            )
+        )
+        self.assertIsInstance(module.global_pool, torch.nn.AdaptiveAvgPool2d)
+
+        model.compile_model(1e-3)
+        model.train(self.data, self.targets, epochs=1, batch_size=4)
+        predictions = model.predict(self.data[:2])
+        self.assertEqual(predictions.shape, (2, 1))
+        np.testing.assert_allclose(
+            predictions,
+            model.copy().predict(self.data[:2]),
+            rtol=1e-6,
+            atol=1e-6,
+        )
 
     def test_hyperparameter_optimization_restores_best_validation_model(self):
         search_space = [
@@ -131,6 +217,71 @@ class TCOCNNCompatibilityTests(unittest.TestCase):
         self.assertEqual(len(model.optimization_trials), 2)
         self.assertIsNotNone(model.best_optim_params)
         self.assertIsNotNone(model.best_batch_size)
+        self.assertTrue(np.isfinite(model.best_validation_rmse))
+        self.assertEqual(model.predict(self.data[6:]).shape, (2, 1))
+
+    def test_v2_hyperparameter_optimization_restores_best_validation_model(self):
+        search_space = [
+            Categorical([3, 4], name="n_filter"),
+            Categorical([1, 2], name="section_depth"),
+            Categorical([3, 5], name="kernel"),
+            Categorical([2, 3], name="stride"),
+            Categorical([6, 8], name="num_neurons"),
+            Real(0.0, 0.2, name="drop_out"),
+            Real(5e-4, 1e-3, name="initial_learning_rate"),
+            Categorical([2, 4], name="batch_size"),
+        ]
+        model = TCOCNNv2Class((4, 64, 1), 1, regression=True, device="cpu")
+        result = model.optimize_model(
+            self.data[:6],
+            self.targets[:6] * 100.0,
+            self.data[6:],
+            self.targets[6:] * 100.0,
+            num_epochs=2,
+            trial_epochs=1,
+            search_space=search_space,
+            random_state=11,
+            plot_results=False,
+        )
+
+        self.assertEqual(len(result.func_vals), 2)
+        self.assertEqual(model.architecture, "v2")
+        self.assertIsNotNone(model.best_optim_params)
+        self.assertIsNotNone(model.best_batch_size)
+        self.assertTrue(np.isfinite(model.best_validation_rmse))
+        self.assertEqual(model.predict(self.data[6:]).shape, (2, 1))
+
+    def test_v3_hyperparameter_optimization_uses_extended_search_space(self):
+        search_space = [
+            Categorical([3, 4], name="n_filter"),
+            Categorical([1, 2], name="section_depth"),
+            Categorical([3, 5], name="kernel"),
+            Categorical([2, 3], name="stride"),
+            Categorical([1, 2], name="convs_per_block"),
+            Categorical([0, 2], name="channel_growth"),
+            Categorical([False, True], name="residual"),
+            Categorical([6, 8], name="num_neurons"),
+            Real(0.0, 0.2, name="drop_out"),
+            Real(5e-4, 1e-3, name="initial_learning_rate"),
+            Categorical([2, 4], name="batch_size"),
+        ]
+        model = TCOCNNv3Class((4, 64, 1), 1, regression=True, device="cpu")
+        result = model.optimize_model(
+            self.data[:6],
+            self.targets[:6] * 100.0,
+            self.data[6:],
+            self.targets[6:] * 100.0,
+            num_epochs=2,
+            trial_epochs=1,
+            search_space=search_space,
+            random_state=13,
+            plot_results=False,
+        )
+
+        self.assertEqual(len(result.func_vals), 2)
+        self.assertEqual(model.architecture, "v3")
+        self.assertIn("convs_per_block", model.best_optim_params)
+        self.assertIn("residual", model.best_optim_params)
         self.assertTrue(np.isfinite(model.best_validation_rmse))
         self.assertEqual(model.predict(self.data[6:]).shape, (2, 1))
 
