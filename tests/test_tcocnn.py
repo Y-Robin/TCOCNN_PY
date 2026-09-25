@@ -1,5 +1,6 @@
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
@@ -43,6 +44,7 @@ class TCOCNNCompatibilityTests(unittest.TestCase):
 
     def test_regression_training_prediction_copy_and_explanations(self):
         model = TCOCNNClass((4, 64, 1), 1, regression=True, device="cpu")
+        self.assertTrue(model.recalibrate_batchnorm_after_epoch)
         model.build_net(SMALL_PARAMS)
         model.compile_model(1e-3)
         model.train(
@@ -85,6 +87,7 @@ class TCOCNNCompatibilityTests(unittest.TestCase):
     def test_pooling_variant_and_classification_probabilities(self):
         labels = np.arange(self.data.shape[0]) % 3
         model = TCOCNNsClass((4, 64, 1), 3, regression=False, device="cpu")
+        self.assertTrue(model.recalibrate_batchnorm_after_epoch)
         model.build_net(SMALL_PARAMS)
         model.compile_model(1e-3)
         model.train(self.data, labels, epochs=1, batch_size=4)
@@ -100,6 +103,7 @@ class TCOCNNCompatibilityTests(unittest.TestCase):
 
     def test_v2_uses_paired_convolutions_and_global_average_pooling(self):
         model = TCOCNNv2Class((4, 64, 1), 1, regression=True, device="cpu")
+        self.assertTrue(model.recalibrate_batchnorm_after_epoch)
         model.build_net(SMALL_PARAMS)
         module = model._require_model()
 
@@ -179,7 +183,11 @@ class TCOCNNCompatibilityTests(unittest.TestCase):
         self.assertIsInstance(module.global_pool, torch.nn.AdaptiveAvgPool2d)
 
         model.compile_model(1e-3)
-        model.train(self.data, self.targets, epochs=1, batch_size=4)
+        with mock.patch.object(
+            model, "_recalibrate_batchnorm", wraps=model._recalibrate_batchnorm
+        ) as recalibrate:
+            model.train(self.data, self.targets, epochs=1, batch_size=4)
+        recalibrate.assert_called_once_with(self.data, 4)
         predictions = model.predict(self.data[:2])
         self.assertEqual(predictions.shape, (2, 1))
         np.testing.assert_allclose(

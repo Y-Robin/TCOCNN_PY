@@ -19,7 +19,7 @@ from skopt import gp_minimize
 from skopt.space import Categorical, Integer, Real
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
-
+MOMENTUMBATCH = 0.1
 
 @dataclass
 class History:
@@ -113,7 +113,7 @@ class ResidualConvBlock(nn.Module):
                 )
             )
             self.normalizations.append(
-                nn.BatchNorm2d(int(out_channels), momentum=0.01)
+                nn.BatchNorm2d(int(out_channels), momentum=MOMENTUMBATCH)
             )
             current_channels = int(out_channels)
         self.projection: Optional[nn.Sequential]
@@ -125,7 +125,7 @@ class ResidualConvBlock(nn.Module):
                     kernel_size=(1, 1),
                     stride=(1, 1),
                 ),
-                nn.BatchNorm2d(int(out_channels), momentum=0.01),
+                nn.BatchNorm2d(int(out_channels), momentum=MOMENTUMBATCH),
             )
         else:
             self.projection = None
@@ -223,7 +223,7 @@ class TCOCNNModule(nn.Module):
                                 kernel_size=(1, first_kernel_size),
                                 stride=(1, 1),
                             ),
-                            nn.BatchNorm2d(out_channels, momentum=0.01),
+                            nn.BatchNorm2d(out_channels, momentum=MOMENTUMBATCH),
                             nn.ReLU(),
                         ]
                     )
@@ -244,7 +244,7 @@ class TCOCNNModule(nn.Module):
                         kernel_size=(1, first_kernel_size),
                         stride=(1, first_stride),
                     ),
-                    nn.BatchNorm2d(n_filters, momentum=0.01),
+                    nn.BatchNorm2d(n_filters, momentum=MOMENTUMBATCH),
                     nn.ReLU(),
                 ]
             )
@@ -257,7 +257,7 @@ class TCOCNNModule(nn.Module):
                         kernel_size=(1, first_kernel_size),
                     ),
                     nn.MaxPool2d(kernel_size=(1, first_stride)),
-                    nn.BatchNorm2d(n_filters, momentum=0.01),
+                    nn.BatchNorm2d(n_filters, momentum=MOMENTUMBATCH),
                     nn.ReLU(),
                 ]
             )
@@ -270,7 +270,7 @@ class TCOCNNModule(nn.Module):
                         n_filters,
                         kernel_size=(1, first_kernel_size),
                     ),
-                    nn.BatchNorm2d(n_filters, momentum=0.01),
+                    nn.BatchNorm2d(n_filters, momentum=MOMENTUMBATCH),
                     nn.ReLU(),
                 ]
             )
@@ -287,7 +287,7 @@ class TCOCNNModule(nn.Module):
                                 kernel_size=(1, 2),
                                 stride=(1, 2),
                             ),
-                            nn.BatchNorm2d(out_channels, momentum=0.01),
+                            nn.BatchNorm2d(out_channels, momentum=MOMENTUMBATCH),
                             nn.ReLU(),
                         ]
                     )
@@ -300,7 +300,7 @@ class TCOCNNModule(nn.Module):
                                 kernel_size=(1, 2),
                             ),
                             nn.MaxPool2d(kernel_size=(1, 2)),
-                            nn.BatchNorm2d(out_channels, momentum=0.01),
+                            nn.BatchNorm2d(out_channels, momentum=MOMENTUMBATCH),
                             nn.ReLU(),
                         ]
                     )
@@ -312,7 +312,7 @@ class TCOCNNModule(nn.Module):
                             out_channels,
                             kernel_size=(1, 2),
                         ),
-                        nn.BatchNorm2d(out_channels, momentum=0.01),
+                        nn.BatchNorm2d(out_channels, momentum=MOMENTUMBATCH),
                         nn.ReLU(),
                     ]
                 )
@@ -369,6 +369,10 @@ class TCOCNNBase:
     """
 
     architecture = "strided"
+    # All architectures use BatchNorm.  Rebuild its inference statistics from
+    # the full training split so validation/prediction cannot be dominated by
+    # the final shuffled mini-batches of an epoch.
+    recalibrate_batchnorm_after_epoch = True
     l2_reg = 0.0001
     network_parameter_names = frozenset(
         {
@@ -485,7 +489,7 @@ class TCOCNNBase:
         self.criterion = nn.MSELoss() if self.regression else nn.CrossEntropyLoss()
         self.lr_scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer,
-            step_size=2,
+            step_size=200,##geändert von 2 auf 200
             gamma=0.9,
         )
 
@@ -579,6 +583,54 @@ class TCOCNNBase:
             raise ValueError("Cannot evaluate an empty dataset.")
         return total_loss / total_samples, total_metric / total_samples
 
+    def _recalibrate_batchnorm(self, data: Any, batch_size: int) -> None:
+        """Recompute stable BatchNorm statistics from the complete training set.
+
+        Training batches deliberately remain shuffled.  For inference, however,
+        an exponential average can be dominated by the final few batches and
+        cause large validation jumps.  A deterministic cumulative pass over
+        balanced batches removes that last-batch dependency without changing
+        learned parameters or consuming random-number-generator state.
+        """
+        model = self._require_model()
+        normalizations = [
+            module
+            for module in model.modules()
+            if isinstance(module, nn.modules.batchnorm._BatchNorm)
+        ]
+        if not normalizations:
+            return
+
+        inputs = self._input_tensor(data)
+        if inputs.shape[0] == 0:
+            raise ValueError("Cannot calibrate BatchNorm on an empty dataset.")
+        number_of_batches = max(1, math.ceil(inputs.shape[0] / max(1, int(batch_size))))
+        momenta = [module.momentum for module in normalizations]
+        cpu_rng_state = torch.random.get_rng_state()
+        cuda_rng_states = (
+            torch.cuda.get_rng_state_all() if self.device.type == "cuda" else None
+        )
+        try:
+            model.train()
+            for module in model.modules():
+                if isinstance(module, nn.Dropout):
+                    module.eval()
+            for module in normalizations:
+                module.reset_running_stats()
+                module.momentum = None
+            with torch.no_grad():
+                for index in range(number_of_batches):
+                    start = index * inputs.shape[0] // number_of_batches
+                    stop = (index + 1) * inputs.shape[0] // number_of_batches
+                    model(inputs[start:stop].to(self.device, non_blocking=True))
+        finally:
+            for module, momentum in zip(normalizations, momenta):
+                module.momentum = momentum
+            torch.random.set_rng_state(cpu_rng_state)
+            if cuda_rng_states is not None:
+                torch.cuda.set_rng_state_all(cuda_rng_states)
+            model.eval()
+
     def _fit(
         self,
         data: Any,
@@ -611,6 +663,13 @@ class TCOCNNBase:
                 outputs = model(inputs)
                 loss = self.criterion(outputs, targets)
                 loss.backward()
+                ##test
+                torch.nn.utils.clip_grad_norm_(
+                   model.parameters(),
+                    max_norm=1.0
+                )
+
+
                 self.optimizer.step()
 
                 sample_count = inputs.shape[0]
@@ -629,6 +688,9 @@ class TCOCNNBase:
                 raise ValueError("Cannot train on an empty dataset.")
             values["loss"].append(total_loss / total_samples)
             values[metric_name].append(total_metric / total_samples)
+
+            if self.recalibrate_batchnorm_after_epoch:
+                self._recalibrate_batchnorm(data, batch_size)
 
             if validation_data is not None:
                 validation_loss, validation_metric = self._evaluate(

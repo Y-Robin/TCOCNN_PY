@@ -1,0 +1,11 @@
+numpy>=1.24,<3
+scipy>=1.10,<2
+h5py>=3.8,<4
+scikit-learn>=1.2,<2
+scikit-optimize>=0.10,<1
+matplotlib>=3.7,<4
+torch>=2.2,<3
+jupyterlab>=4,<5
+notebook>=7,<8
+ipykernel>=6,<7
+nbformat>=5,<6
