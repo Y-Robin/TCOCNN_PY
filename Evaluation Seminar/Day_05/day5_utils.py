@@ -24,7 +24,9 @@ def load_cycle_csv(
     if not path.exists():
         raise FileNotFoundError(f"CSV file not found: {path}")
 
-    values = np.loadtxt(path, delimiter=",", dtype=np.float32, ndmin=2)
+    values = np.loadtxt(
+        path, delimiter=",", dtype=np.float32, ndmin=2, encoding="utf-8-sig"
+    )
     if values.ndim != 2:
         raise ValueError(f"Expected a 2-D cycle table in {path}, got {values.shape}.")
     if expected_samples is not None and values.shape[1] != expected_samples:

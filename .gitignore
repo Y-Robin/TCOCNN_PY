@@ -47,3 +47,6 @@ venv/
 /output/*
 /tools/*
 /tmp/*
+
+# Generated Day 5 models, figures, reports, and executed notebooks.
+/Evaluation Seminar/Day_05/output/
