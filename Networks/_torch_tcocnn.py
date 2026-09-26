@@ -489,7 +489,7 @@ class TCOCNNBase:
         self.criterion = nn.MSELoss() if self.regression else nn.CrossEntropyLoss()
         self.lr_scheduler = torch.optim.lr_scheduler.StepLR(
             self.optimizer,
-            step_size=200,##geändert von 2 auf 200
+            step_size=2,
             gamma=0.9,
         )
 

@@ -10,7 +10,8 @@ gas-sensor dataset. Use **Kernel → Restart Kernel and Run All Cells** for a cl
 run. The `_build_day_01_notebooks.py` builder is the editable source used to
 regenerate both notebooks.
 
-The first notebook contrasts custom SciPy objectives with standard scikit-learn
-estimators and a complete preprocessing/model pipeline. The second transfers the
-same experimental discipline to PyTorch and explains every part of the training
-loop.
+Both notebooks show the generated data, small matrix excerpts, distributions,
+relationships and scaled feature matrices before modeling. The first notebook
+uses standard scikit-learn estimators and pipelines throughout. The second
+introduces tensors and one readable PyTorch training loop. Hyperparameter examples
+deliberately vary only one setting over a few values.

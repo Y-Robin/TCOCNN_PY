@@ -1,20 +1,24 @@
-# Day 3 — TCOCNN
+# Day 3 — TCOCNN with one customer sub-sensor
 
-1. `01_TCOCNN_Architecture_and_Components.ipynb`
-2. `02_Preprocessing_and_Parallel_Sensors.ipynb`
-3. `03_Train_a_TCOCNN_on_Sensor_Data.ipynb`
-4. `04_TCOCNN_Hyperparameter_Optimization.ipynb`
+Every notebook uses Sensor A, sub-sensor 0 only. The model input has shape
+`(samples, 1, 1440, 1)`; no other sub-sensor is loaded, plotted, scaled, or trained.
 
-Run notebooks in order. Notebook 01 is synthetic; notebooks 02–04 use
-`Data/fullData.mat`. All preprocessing statistics are learned from training data
-only. Training compares 30 and 100 epochs with 32/64 filters and 256/512 dense units.
-Search uses eight trials per method and 60 epochs per trial, restoring the best
-validation checkpoint. Scatterplots and residuals compare validation predictions;
-the training notebook evaluates the frozen winner on both held-out splits.
-Long runs may take substantial time on CPU.
+Run the notebooks in this order:
 
-5. `05_TCOCNN_v3_Hyperparameter_Optimization.ipynb`
+1. `01_TCOCNN_Architecture_and_Components.ipynb` — a small synthetic TCOCNN,
+   tensor shapes, the one-row input matrix, and first-layer activations.
+2. `02_Preprocessing_One_Subsensor.ipynb` — grouped real-data splits, target
+   distributions, train-only input/target scaling, and raw/scaled signal views.
+3. `03_Train_a_TCOCNN_on_Sensor_Data.ipynb` — one fixed v3 architecture,
+   40 training epochs, learning curves, parity plots, and residuals.
+4. `04_TCOCNN_Hyperparameter_Optimization.ipynb` — grid, random, and Bayesian
+   search with four trials per strategy and 25 epochs per trial.
+5. `05_TCOCNN_v3_Hyperparameter_Optimization.ipynb` — Plain/V1 comparison,
+   residual ablation, and six Bayesian v3 trials with 30 epochs each.
+6. `05b_TCOCNN_v3_Low_Learning_Rate_Search.ipynb` — the same controlled v3
+   experiment with a lower learning-rate search range.
 
-The v3 extension compares a plain reference, a controlled residual ablation, and
-six Bayesian trials. Every run receives 60 epochs. Validation scatterplots,
-parameter counts, runtime, and held-out evaluation make the tradeoffs visible.
+Notebook 01 is synthetic. Notebooks 02–05b use `Data/fullData.mat`. All split,
+scaling, and checkpoint decisions use training and validation data only. The
+regular test and `test_extra` remain final evaluations. Every notebook is stored
+with executed default outputs and additional visual diagnostics.

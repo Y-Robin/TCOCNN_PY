@@ -1,4 +1,4 @@
-"""DAV3E-inspirierte FESR-Baseline für genau einen Sensorkanal."""
+"""DAV3E-inspired FESR baseline for exactly one sensor channel."""
 
 from __future__ import annotations
 
@@ -37,18 +37,18 @@ def extract_fesr_features(
     n_segments: int = N_SEGMENTS,
     sample_rate_hz: float = SAMPLE_RATE_HZ,
 ) -> tuple[np.ndarray, list[str]]:
-    """Äquidistante Segmentmittelwerte und -steigungen.
+    """Equidistant segment means and slopes.
 
-    Für 1440 Samples und 120 Segmente enthält jedes Segment 12 Samples.
+    With 1,440 samples and 120 segments, each segment contains 12 samples.
     Bei einem Kanal entstehen 120 * 2 = 240 Merkmale.
     """
     values = np.asarray(X, dtype=float)
     if values.ndim != 3 or values.shape[1:] != (1, CYCLE_SAMPLES):
         raise ValueError(
-            f"Erwartet wird (n, 1, {CYCLE_SAMPLES}), erhalten: {values.shape}"
+            f"Expected (n, 1, {CYCLE_SAMPLES}), received: {values.shape}"
         )
     if CYCLE_SAMPLES % n_segments:
-        raise ValueError("Die Segmentzahl muss den Zyklus ohne Rest teilen")
+        raise ValueError("The segment count must divide the cycle without a remainder")
 
     raw = values[:, 0, :]
     segment_width = CYCLE_SAMPLES // n_segments
@@ -125,7 +125,7 @@ def feature_ranking(
         return rfe_lsr_ranking(X_train, y_train)
     if selection_method == "pearson":
         return pearson_ranking(X_train, y_train)
-    raise ValueError(f"Unbekannte Feature Selection: {selection_method}")
+    raise ValueError(f"Unknown feature selection: {selection_method}")
 
 
 def regression_metrics(y_true: np.ndarray, prediction: np.ndarray) -> dict[str, float]:
@@ -149,7 +149,7 @@ def fit_fesr(
     component_counts: tuple[int, ...] = PLS_COMPONENTS,
     selection_method: str = "rfe_lsr",
 ) -> FesrResult:
-    """Rangfolge auf Train, Hyperparameter auf Val, finale Tests unangetastet."""
+    """Rank on training, tune on validation, and leave final tests untouched."""
     scaled, mean, scale = standardize_from_train(features)
     y_train = np.asarray(targets["train"], dtype=float)
     y_val = np.asarray(targets["val"], dtype=float)
@@ -181,7 +181,7 @@ def fit_fesr(
                 best = candidate
 
     if best is None:
-        raise RuntimeError("Keine zulässige FESR-Konfiguration gefunden")
+        raise RuntimeError("No valid FESR configuration found")
     validation_rmse, n_features, n_components = best
     selected = ranking[:n_features]
     model = PLSRegression(

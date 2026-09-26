@@ -356,7 +356,8 @@ def gradient_and_cam(wrapper, X_z, y_std=1.):
 def save_checkpoint(folder, wrapper, scaler, metadata, reference_cycle):
     folder = Path(folder); folder.mkdir(parents=True, exist_ok=True)
     torch.save({k: v.detach().cpu() for k, v in wrapper.model.state_dict().items()}, folder / 'weights.pt')
-    np.savez(folder / 'preprocessing.npz', **scaler, reference_cycle=reference_cycle)
+    preprocessing = {key: value for key, value in scaler.items() if key != 'reference_cycle'}
+    np.savez(folder / 'preprocessing.npz', **preprocessing, reference_cycle=reference_cycle)
     (folder / 'metadata.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
 
 

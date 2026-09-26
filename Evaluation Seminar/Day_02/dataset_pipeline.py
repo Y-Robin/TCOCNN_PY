@@ -86,7 +86,7 @@ def project_root(start: str | Path | None = None) -> Path:
     for candidate in (here, *here.parents):
         if (candidate / "README.md").exists() and (candidate / "Data").exists():
             return candidate
-    raise FileNotFoundError("Repository-Wurzel mit README.md und Data/ nicht gefunden")
+    raise FileNotFoundError("Repository root with README.md and Data/ not found")
 
 
 def dataset_path() -> Path:
@@ -105,18 +105,18 @@ def ensure_dataset(download: bool = True, verify: bool = False) -> Path:
     path = dataset_path()
     if not path.exists():
         if not download:
-            raise FileNotFoundError(f"{path} fehlt")
+            raise FileNotFoundError(f"{path} is missing")
         path.parent.mkdir(parents=True, exist_ok=True)
         partial = path.with_suffix(".mat.part")
         urllib.request.urlretrieve(DATASET_URL, partial)
         partial.replace(path)
     if verify and _md5(path) != DATASET_MD5:
-        raise ValueError("Die MD5-Pruefsumme des Zenodo-Datensatzes stimmt nicht")
+        raise ValueError("The Zenodo dataset MD5 checksum does not match")
     return path
 
 
 def temperature_boundary_points() -> tuple[BoundaryPoint, ...]:
-    """Alle 48 Start-/Endpunkte der 24 Temperaturphasen."""
+    """All 48 start/end points of the 24 temperature phases."""
 
     points: list[BoundaryPoint] = []
     block_samples = HIGH_PHASE_SAMPLES + LOW_PHASE_SAMPLES
@@ -131,12 +131,12 @@ def temperature_boundary_points() -> tuple[BoundaryPoint, ...]:
             )
         )
     if points[-1].index != CYCLE_SAMPLES - 1:
-        raise AssertionError("Temperaturprofil und Zykluslaenge sind inkonsistent")
+        raise AssertionError("Temperature profile and cycle length are inconsistent")
     return tuple(points)
 
 
 def temperature_profile() -> np.ndarray:
-    """Temperatur-Sollprofil fuer einen Zyklus mit 1.440 Abtastwerten."""
+    """Temperature setpoint profile for one cycle with 1,440 samples."""
 
     blocks: list[np.ndarray] = []
     for low_temperature in LOW_TEMPERATURES_C:
@@ -154,7 +154,7 @@ def temperature_profile() -> np.ndarray:
 
 def _load_single_channel(part: str) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     if part not in {"train", "test"}:
-        raise ValueError("part muss 'train' oder 'test' sein")
+        raise ValueError("part must be 'train' or 'test'")
     with h5py.File(ensure_dataset(), "r") as file:
         references = file[f"{PHYSICAL_SENSOR}_{part}"]
         raw = np.asarray(file[references[SUB_SENSOR_INDEX, 0]]).T.astype(np.float32)
@@ -180,9 +180,9 @@ def _transform_data(data: np.ndarray, transform: str) -> np.ndarray:
         return np.asarray(data, dtype=np.float32)
     if transform == "log1p":
         if np.any(data < 0):
-            raise ValueError("log1p ist fuer negative Sensorwerte nicht definiert")
+            raise ValueError("log1p is not defined for negative sensor values")
         return np.log1p(data).astype(np.float32)
-    raise ValueError(f"Unbekannte Transformation: {transform}")
+    raise ValueError(f"Unknown transformation: {transform}")
 
 
 def prepare_splits(transform: str = "stored") -> dict[str, dict[str, object]]:
@@ -250,7 +250,7 @@ def validate_splits(splits: dict[str, dict[str, object]]) -> None:
         X = np.asarray(splits[split]["X"])
         targets = splits[split]["targets"]
         if X.ndim != 3 or X.shape[1] != SENSOR_DIMENSION:
-            raise AssertionError(f"{split}: Sensorachse muss eins sein: {X.shape}")
+            raise AssertionError(f"{split}: sensor dimension must have length one: {X.shape}")
         group_sets[split] = set(np.asarray(targets["range"], dtype=int))
     if any(
         group_sets[left] & group_sets[right]
@@ -260,9 +260,9 @@ def validate_splits(splits: dict[str, dict[str, object]]) -> None:
         raise AssertionError("Splits enthalten gemeinsame UGM-Gruppen")
     for split in ("train", "val", "test"):
         if max(group_sets[split]) > BASE_SEGMENT_MAX_UGM:
-            raise AssertionError(f"{split} enthaelt UGM aus dem letzten Segment")
+            raise AssertionError(f"{split} contains a UGM from the final segment")
     if min(group_sets["test_extra"]) < EXTRA_TEST_MIN_UGM:
-        raise AssertionError("test_extra enthaelt UGM aus den ersten Segmenten")
+        raise AssertionError("test_extra contains a UGM from the first segments")
 
 
 def _pearson(x: np.ndarray, y: np.ndarray) -> float:
@@ -280,10 +280,10 @@ def _pearson(x: np.ndarray, y: np.ndarray) -> float:
 def score_boundary_points(
     splits: dict[str, dict[str, object]], target: str
 ) -> list[PointScore]:
-    """Bewertet erlaubte Messpunkte ausschliesslich mit Trainingsdaten."""
+    """Scores allowed measurement points using training data only."""
 
     if target not in GAS_TARGETS:
-        raise ValueError(f"Unbekanntes Gas: {target}")
+        raise ValueError(f"Unknown gas: {target}")
     train = splits["train"]
     X = np.asarray(train["X"])[:, 0, :]
     targets = train["targets"]
@@ -317,7 +317,7 @@ def score_boundary_points(
 def selected_point_scores(
     scores: Iterable[PointScore],
 ) -> dict[str, PointScore]:
-    """Gesamtbeste, selektivste und je Temperatur beste Einzelpunkte."""
+    """Overall best, most selective, and per-temperature best individual points."""
 
     scores = list(scores)
     if not scores:
@@ -341,7 +341,7 @@ def selected_point_scores(
 def build_point_dataset(
     splits: dict[str, dict[str, object]], target: str, score: PointScore
 ) -> dict[str, np.ndarray]:
-    """Extrahiert genau einen Rohmesspunkt; X hat Form (n, 1, 1)."""
+    """Extract exactly one raw measurement point; X has shape (n, 1, 1)."""
 
     result: dict[str, np.ndarray] = {}
     for split in SPLIT_NAMES:
@@ -361,7 +361,7 @@ def build_point_dataset(
             split_data["source_indices"], dtype=np.int64
         )
         if result[f"X_{split}"].shape[1:] != (1, 1):
-            raise AssertionError("Einzelpunkt-Datensatz muss Form (n, 1, 1) haben")
+            raise AssertionError("Single-point dataset must have shape (n, 1, 1)")
     return result
 
 
@@ -370,11 +370,11 @@ def build_multi_point_dataset(
     target: str,
     point_indices: Iterable[int],
 ) -> dict[str, np.ndarray]:
-    """Kombiniert mehrere rohe Zeitpunkte ohne die Sensorachse zu veraendern."""
+    """Combines several raw time points without changing the sensor axis."""
 
     indices = np.asarray(list(point_indices), dtype=np.int64)
     if indices.ndim != 1 or len(indices) == 0:
-        raise ValueError("Mindestens ein Punktindex ist erforderlich")
+        raise ValueError("At least one point index is required")
     if np.any(indices < 0) or np.any(indices >= CYCLE_SAMPLES):
         raise ValueError("Punktindex ausserhalb des Temperaturzyklus")
     result: dict[str, np.ndarray] = {}
@@ -389,7 +389,7 @@ def build_multi_point_dataset(
             targets["range"], dtype=np.int64
         )
         if result[f"X_{split}"].shape[1:] != (1, len(indices)):
-            raise AssertionError("Sensorachse muss auch bei mehreren Punkten eins sein")
+            raise AssertionError("Sensor dimension must remain one with multiple points")
     result["point_indices"] = indices
     return result
 
@@ -411,7 +411,7 @@ def _all_targets_for_export(
 def export_base_datasets(
     output_dir: str | Path, transform: str = "stored"
 ) -> tuple[Path, Path]:
-    """Exportiert den Vollzyklus und alle erlaubten Grenzpunkte je einmal."""
+    """Exports the full cycle and all allowed boundary points once each."""
 
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
@@ -474,7 +474,7 @@ def _slug(text: str) -> str:
 def export_point_datasets(
     output_dir: str | Path, targets: Iterable[str] = GAS_TARGETS
 ) -> Path:
-    """Exportiert pro Gas getrennte Einzelpunkt-Datensaetze und ein Manifest."""
+    """Exports separate single-point datasets per gas and a manifest."""
 
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
@@ -541,8 +541,8 @@ def export_point_datasets(
 if __name__ == "__main__":
     output = project_root() / "Data" / "seminar_point_datasets"
     manifest = export_point_datasets(output)
-    print(f"Einzelpunkt-Export: {manifest}")
+    print(f"Single-point export: {manifest}")
     for transform in TRANSFORMS:
         raw_path, boundary_path = export_base_datasets(output, transform)
         print(f"Vollstaendiger Rohzyklus ({transform}): {raw_path}")
-        print(f"Alle erlaubten Grenzpunkte ({transform}): {boundary_path}")
+        print(f"All allowed boundary points ({transform}): {boundary_path}")

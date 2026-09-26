@@ -1,254 +1,110 @@
-"""Notebook-spezifische Software- und Parametererklärungen."""
+"""Notebook-specific software and parameter explanations."""
 
-GUIDES = {
-    "01": r"""
-## Software und einstellbare Größen
-
-Dieses Notebook führt in den Datenzugriff ein. Die eigentliche Logik liegt in
-dataset_pipeline.py, damit dieselben Regeln später nicht versehentlich anders
-implementiert werden.
-
-**Verwendete Python-Werkzeuge**
-
-- pathlib verwaltet Pfade unabhängig vom Startordner des Notebooks.
-- urllib lädt die öffentliche MAT-Datei bei Bedarf von Zenodo.
-- hashlib vergleicht die MD5-Prüfsumme und erkennt beschädigte Downloads.
-- h5py liest die MATLAB-v7.3/HDF5-Datei, ohne MATLAB zu benötigen.
-- NumPy stellt die Messzyklen als Arrays der Form (Zyklen, Sensoren, Samples)
-  bereit und schreibt die kompakten NPZ-Exporte.
-- scikit-learn liefert GroupShuffleSplit. Dadurch bleibt jede UGM-ID vollständig
-  in genau einem Split.
-
-**Wichtige Eingaben**
-
-- transform = "stored" nutzt die auf Zenodo gespeicherten logarithmischen
-  Sensorwerte; transform = "log1p" wendet zusätzlich NumPy log1p an.
-- RANDOM_STATE legt die reproduzierbare Gruppenauswahl fest.
-- BASE_TEST_SIZE und VALIDATION_SIZE_OF_DEVELOPMENT steuern die Anteile.
-- PHYSICAL_SENSOR und SUB_SENSOR_INDEX bestimmen den Kanal. Für dieses Seminar
-  bleiben sie absichtlich auf sensorA und 0; die Sensorachse muss Länge 1 haben.
-- BASE_SEGMENT_MAX_UGM = 500 und EXTRA_TEST_MIN_UGM = 501 trennen den normalen
-  Entwicklungsbereich vom exklusiven letzten Abschnitt.
-
-Nach einer Änderung an Split-Konstanten müssen alle nachfolgenden Notebooks neu
-ausgeführt werden. Test und test_extra dürfen niemals für Punktwahl,
-Korrelation oder Hyperparameteroptimierung benutzt werden.
-""",
-    "02": r"""
-## Software, Bedienung und Plotparameter
-
-Oben werden nur GAS und TRANSFORM verändert. Danach sollte **Run All** verwendet
-werden, damit jede Grafik dieselbe Auswahl zeigt.
-
-**Eingabeparameter**
-
-- GAS akzeptiert einen Namen aus GAS_TARGETS, beispielsweise "acetone",
-  "hydrogen" oder "ethyl_acetate".
-- TRANSFORM ist "stored" oder "log1p". Die zweite Variante ist eine zusätzliche
-  Transformation und nicht der ursprüngliche Widerstand.
-
-**Verwendete Software**
-
-- NumPy lädt NPZ-Dateien, berechnet Quantile, Korrelationen und die lineare
-  Kleinste-Quadrate-Lösung.
-- Matplotlib erzeugt Histogramme, ECDF, Scatterplots, Signalbänder und
-  Temperaturprofile. figsize ändert die Größe, alpha die Transparenz, s die
-  Punktgröße und bins die Anzahl der Histogrammklassen.
-- dataset_pipeline liefert die unveränderten UGM-Splits, Zielnamen,
-  Temperaturgrenzen und Exporte.
-
-Die lineare Einpunkt-Baseline löst Ziel = a mal Sensorwert + b mit
-numpy.linalg.lstsq. Sie ist kein nichtlineares Sensormodell, sondern eine
-Orientierung. In SciPy könnte alternativ scipy.stats.pearsonr für Korrelationen
-verwendet werden; NumPy reicht hier aus und vermeidet eine zusätzliche API.
-
-Beim Interpretieren der Scatterplots sind Punktwolke, systematische Krümmung,
-Ausreißer und unterschiedliche Konzentrationsdichte wichtiger als nur ein
-einzelner Korrelationswert.
-""",
-    "03": r"""
-## Software, Modelle und Eingabeparameter
-
-Der zentrale Eingabeparameter ist GAS. Alle 48 zulässigen Temperaturgrenzpunkte
-werden geprüft; ausgewählt wird ausschließlich anhand des Validation-RMSE des
-Power Laws.
-
-**Drei Modelle**
-
-- Lineare Regression: C = a mal x + b.
-- Linear nach log1p: C = a mal log(1 + x) + b.
-- Power Law: C = A mal (x / s) hoch n. Die Skala s ist der Trainingsmedian und
-  verbessert die numerische Kondition.
-
-NumPy berechnet die linearen Parameter mit numpy.linalg.lstsq. Das Power Law
-wird durch Logarithmieren ebenfalls als lineares Problem gelöst. Dafür müssen
-Sensorwert und Ziel positiv sein. Für ein echtes nichtlineares Fitproblem könnte
-man scipy.optimize.curve_fit oder scipy.optimize.least_squares verwenden; diese
-Funktionen erlauben Startwerte, Parametergrenzen und robuste Verlustfunktionen.
-
-**Was kann verändert werden?**
-
-- GAS wählt das Zielgas.
-- Die Liste der zulässigen Punkte kommt aus temperature_boundary_points.
-- Als Auswahlmetrik könnte RMSE durch MAE ersetzt werden; dies ändert jedoch die
-  Bedeutung der Optimierung.
-- Negative Vorhersagen werden bewusst nicht abgeschnitten, damit Modellfehler
-  sichtbar bleiben.
-
-Test und test_extra dienen erst nach Punktwahl und Fit zur Bewertung.
-""",
-    "04": r"""
-## Software, Modelle und einstellbare Parameter
-
-Dieses Notebook erweitert Notebook 03 auf mehrere Messpunkte.
-
-**Eingaben**
-
-- GAS wählt das Zielgas.
-- N_FEATURES liegt zwischen 2 und 13. Es wird höchstens ein Punkt pro
-  Temperaturstufe aufgenommen, damit nicht viele fast identische Punkte
-  derselben Stufe dominieren.
-
-**Methoden**
-
-- Multivariate lineare Regression verwendet numpy.linalg.lstsq.
-- Die log1p-Variante transformiert jede Eingangsspalte vor der Regression.
-- Das Mehrpunkt-Power-Law besitzt pro Merkmal einen Exponenten und wird im
-  logarithmischen Raum angepasst.
-- Die greedy Auswahl ergänzt in jedem Schritt denjenigen zulässigen Punkt, der
-  den Validation-RMSE des Power Laws am stärksten verbessert.
-
-NumPy übernimmt Matrixrechnung und Logarithmen, Matplotlib zeigt Auswahlpfad,
-Metriken und Paritätsplots. Vergleichbare fertige Alternativen sind
-sklearn.linear_model.LinearRegression und scipy.optimize.least_squares.
-
-Eine größere Merkmalszahl ist nicht automatisch besser: N_FEATURES beeinflusst
-Flexibilität, Multikollinearität und Extrapolationsrisiko. Der Auswahlpfad
-benutzt Train und Validation; Test sowie test_extra bleiben unangetastet.
-""",
-}
-
-GUIDES.update({
-    "05": r"""
-## Software, physikalische Annahmen und Parameter
-
-**Eingaben**
-
-- GAS wählt das zu quantifizierende Gas.
-- N_ALA_SEGMENTS bestimmt die Zahl adaptiver linearer Abschnitte. Mehr Segmente
-  rekonstruieren feiner, erzeugen aber zweimal so viele ALA-Merkmale.
-- RIDGE_ALPHAS ist eine Folge positiver Regularisierungsstärken. None erzeugt
-  logarithmisch verteilte Werte von 10 hoch -4 bis 10 hoch 6.
-
-physics_features.py teilt den Zyklus in 24 bekannte Temperaturphasen. Pro Phase
-werden Start, Ende, Hub, Anfangssteigung, tau63, Exponentialfehler und ein
-Qualitätsflag berechnet. tau63 ist die Zeit bis 63,2 Prozent des beobachteten
-Hubs und entspricht nur bei einer Antwort erster Ordnung der physikalischen
-Zeitkonstante.
-
-Die ALA-Stützstellen werden aus dem Trainingsmedian gelernt. Für jedes Segment
-werden Mittelwert und Steigung erzeugt. NumPy übernimmt Vektorisierung und
-Ausgleichsgeraden; Matplotlib visualisiert Phasenfit und ALA-Rekonstruktion.
-sklearn.linear_model.Ridge löst die lineare Regression mit L2-Regularisierung.
-alpha = 0 nähert sich unregularisierten kleinsten Quadraten; großes alpha
-schrumpft Koeffizienten stärker.
-
-Für einen vollständigen exponentiellen Fit könnte scipy.optimize.curve_fit mit
-R_inf, Amplitude und tau als Parametern eingesetzt werden. Bei kurzen,
-nichtmonotonen Phasen ist tau63 robuster und leichter zu erklären. Skalierung,
-ALA-Grenzen und alpha-Auswahl sehen keine Testdaten.
-""",
-    "06": r"""
-## Software, Versuchsaufbau und veränderbare Parameter
-
-Dieses Notebook ist absichtlich eine Negativdemonstration und darf nicht als
-gültige Baseline verwendet werden.
-
-**Eingaben**
-
-- GAS wählt das Ziel; Ethanol zeigt den Unterschied besonders deutlich.
-- N_ALA_SEGMENTS steuert die Anzahl der ALA-Segmente.
-- HELD_OUT_UGM_FRACTION legt den Anteil vollständig unbekannter UGM-IDs fest.
-- RANDOM_STATE_DEMO macht Gruppenwahl, Zeilensplit und Bäume reproduzierbar.
-
-sklearn.model_selection.GroupShuffleSplit hält zuerst komplette UGMs zurück.
-train_test_split zerlegt danach den Rest absichtlich zeilenweise und erzeugt
-UGM-Leakage. sklearn.ensemble.ExtraTreesRegressor kombiniert viele stark
-randomisierte Entscheidungsbäume.
-
-Wichtige Extra-Trees-Parameter:
-
-- n_estimators: Zahl der Bäume; mehr reduziert Zufallsschwankungen, kostet Zeit.
-- min_samples_leaf: Mindestzahl je Blatt; 1 erlaubt nahezu vollständiges
-  Memorieren, größere Werte glätten.
-- max_features: Anteil der Merkmale pro Teilung.
-- n_jobs = -1 nutzt alle verfügbaren CPU-Kerne.
-
-Die Scatterplots vergleichen Wiedererkennen bekannter UGMs mit echter
-Generalisierung. Hohe Trainingsgüte allein ist kein Qualitätsnachweis.
-""",
-    "07": r"""
-## Software, Distanzmodell und Parameter
-
-**Eingaben**
-
-- GAS wählt das Zielgas.
-- N_ALA_SEGMENTS steuert die ALA-Basis.
-- N_NOISE_FEATURES legt die Anzahl eindeutig irrelevanter Kontrollmerkmale fest.
-- RANDOM_STATE_DEMO reproduziert dieses Kontrollrauschen.
-
-NumPy erzeugt Rohwertblöcke, erste Differenzen und mit numpy.fft.rfft ein
-Frequenzspektrum. sklearn.neighbors.KNeighborsRegressor sagt den Zielwert aus
-den k ähnlichsten Trainingszeilen vorher. Die Option weights = "distance"
-gewichtet nahe Nachbarn stärker; p = 2 entspricht euklidischer Distanz.
-
-k wird in diesem Notebook einmal auf der kompakten ALA-Baseline aus
-3, 5, 7, 11, 21 und 31 gewählt und danach für alle Dimensionen festgehalten.
-Kleines k ist flexibel und rauschempfindlich, großes k glättet stärker.
-
-Vor der Distanzberechnung wird jede Spalte mit Trainingsmittelwert und
-Trainingsstandardabweichung z-standardisiert. Ohne Skalierung würden Merkmale
-mit großen Zahlenwerten dominieren. scipy.spatial.distance bietet weitere
-Distanzfunktionen; scikit-learn übernimmt hier Fit und Vorhersage direkt.
-
-Die 1.000 Rauschmerkmale sind ein kontrolliertes Experiment. Sie dürfen nicht
-als reale Sensorinformation interpretiert werden.
-""",
-    "08": r"""
-## Software, Suchräume und Bedienung der FESR-Baseline
-
-Dieses Notebook läuft standardmäßig über alle Namen in GAS_TARGETS. Zwei
-Feature-Extraction- und zwei Feature-Selection-Verfahren ergeben vier
-Kandidaten pro Gas.
-
-**Feature Extraction**
-
-- Equidistant: 120 gleich lange Segmente mit je 12 Samples; Mittelwert und
-  Steigung ergeben bei einem Kanal 240 Merkmale.
-- ALA: 50 anhand des Rekonstruktionsfehlers platzierte Segmente; Grenzen werden
-  nur aus dem Trainingsmedian gelernt, Mittelwert und Steigung ergeben 100
-  Merkmale.
-
-**Feature Selection und Regression**
-
-- Pearson sortiert nach absoluter Train-Korrelation zum Ziel.
-- RFE-LSR aus sklearn.feature_selection.RFE passt wiederholt
-  sklearn.linear_model.Ridge an und entfernt das betragsmäßig schwächste
-  Merkmal.
-- sklearn.cross_decomposition.PLSRegression projiziert korrelierte Merkmale auf
-  wenige latente Komponenten und regressiert dort auf die Konzentration.
-
-**Einstellbare Suchräume**
-
-- FEATURE_COUNT_GRID enthält die getesteten Anzahlen ausgewählter Merkmale.
-- PLS_COMPONENT_GRID enthält die getesteten PLS-Dimensionen. Die Komponentenzahl
-  darf die Merkmalszahl nicht überschreiten.
-- Ridge-alpha für RFE-LSR steht in fesr_baseline.py und ist standardmäßig 1.
-- Die ALA-Segmentzahl ist im Extraktionsblock auf 50 gesetzt.
-
-Validation wählt FE, FS, Merkmalszahl und PLS-Komponenten. Die Tabellen zeigen
-auch Testwerte aller Kandidaten, diese beeinflussen die Auswahl aber nicht.
-csv und json aus der Python-Standardbibliothek schreiben die Baseline-Artefakte;
-NumPy, scikit-learn und Matplotlib übernehmen Berechnung und Darstellung.
-""",
-})
+GUIDES = {'01': '## Software and configurable values\n'
+       '\n'
+       'This notebook introduces data access. `dataset_pipeline.py` contains the shared '
+       'loading,\n'
+       'validation, grouping, transformation, and export rules so later notebooks use '
+       'identical data.\n'
+       '\n'
+       '- `pathlib`, `urllib`, and `hashlib` locate, download, and verify the public file.\n'
+       '- `h5py` reads the MATLAB v7.3/HDF5 data; NumPy stores cycles as\n'
+       '  `(cycles, sensors, samples)` arrays.\n'
+       "- scikit-learn's `GroupShuffleSplit` keeps every UGM ID in exactly one split.\n"
+       '\n'
+       '`transform` can be `stored` or the additional `log1p` transformation. Sensor A, '
+       'channel 0,\n'
+       'and a sensor dimension of length one are fixed for this seminar. UGM 1–500 are split '
+       'into\n'
+       'train, validation, and test; UGM 501–906 form the exclusive `test_extra` set. Never '
+       'use either\n'
+       'test split for point selection, correlation screening, or hyperparameter selection.\n',
+ '02': '## Software, controls, and plot settings\n'
+       '\n'
+       'Change only `GAS` and `TRANSFORM`, then use **Run All** so every figure uses the same '
+       'choice.\n'
+       'NumPy loads the arrays and calculates summaries; Matplotlib displays distributions, '
+       'ECDFs,\n'
+       'scatter plots, signal bands, and temperature profiles. `dataset_pipeline` supplies the '
+       'frozen\n'
+       'UGM splits and the 48 allowed phase-boundary points.\n'
+       '\n'
+       'The final single-point line is only an orientation baseline. When reading the figures, '
+       'inspect\n'
+       'curvature, outliers, changing density, and split differences instead of relying on '
+       'one\n'
+       'correlation value.\n',
+ '03': '## Software, models, and input parameter\n'
+       '\n'
+       '`GAS` is the only central input. The notebook compares a line on the stored value, a '
+       'line on\n'
+       '`log1p(x)`, and an empirical power law on the same raw point. NumPy fits their '
+       'parameters.\n'
+       'All 48 allowed boundary points are ranked by power-law validation RMSE; test and '
+       '`test_extra`\n'
+       'are used only after the point and model parameters have been fixed. Predictions are '
+       'not clipped,\n'
+       'so model failure remains visible.\n',
+ '04': '## Software, models, and configurable parameters\n'
+       '\n'
+       'This notebook extends Notebook 03 to several raw points. `GAS` selects the target and\n'
+       '`N_FEATURES` selects between 2 and 13 temperatures. A greedy search adds at most one '
+       'point per\n'
+       'temperature and uses only power-law validation RMSE. The same selected matrix is then '
+       'supplied\n'
+       'to raw linear, log1p linear, and multi-point power-law models. More features can '
+       'increase\n'
+       'flexibility, collinearity, and extrapolation risk, so test sets remain untouched '
+       'during selection.\n',
+ '05': '## Software, physical assumptions, and parameters\n'
+       '\n'
+       '`GAS`, `N_ALA_SEGMENTS`, and `RIDGE_ALPHAS` control the experiment. '
+       '`physics_features.py`\n'
+       'extracts start, end, amplitude, initial slope, tau63, first-order response error, and '
+       'a threshold\n'
+       'quality flag for all 24 temperature phases. ALA breakpoints are learned from the '
+       'training median;\n'
+       'each segment contributes a mean and slope. Ridge regularization is selected on '
+       'validation only.\n'
+       '\n'
+       'tau63 equals a physical time constant only for an approximately first-order response. '
+       'The error\n'
+       'and quality flag expose deviations. Scaling, ALA boundaries, and alpha selection never '
+       'see test\n'
+       'or `test_extra`.\n',
+ '06': '## Software, experiment design, and parameters\n'
+       '\n'
+       'This is intentionally a negative demonstration, not a valid baseline. `GAS`, the ALA '
+       'segment\n'
+       'count, held-out UGM fraction, and random seed control it. `GroupShuffleSplit` first '
+       'reserves\n'
+       'complete unknown UGM IDs; `train_test_split` then deliberately splits the remaining '
+       'rows and\n'
+       'creates UGM leakage. Extra Trees varies from strongly smoothed to highly flexible '
+       'through\n'
+       '`min_samples_leaf`. The figures contrast recognition of familiar UGMs with '
+       'generalization to\n'
+       'entirely new mixtures.\n',
+ '07': '## Software, distance model, and parameters\n'
+       '\n'
+       'The experiment adds ALA, phase dynamics, sparse raw values, derivatives, spectra, and '
+       'explicitly\n'
+       'irrelevant Gaussian controls to distance-weighted k-NN. `k` is selected once on the '
+       'compact ALA\n'
+       'baseline and then held fixed. Every column is standardized from training statistics so '
+       'units do\n'
+       'not dominate Euclidean distance. The control features contain no target information; '
+       'they expose\n'
+       'how irrelevant dimensions dilute meaningful neighborhoods.\n',
+ '08': '## Software, search spaces, and FESR controls\n'
+       '\n'
+       'Two feature-extraction variants (120 equidistant segments and 50 ALA segments) are '
+       'combined with\n'
+       'Pearson and RFE-LSR selection. Every segment contributes a mean and slope. '
+       'PLSRegression maps the\n'
+       'selected correlated features to a few latent components. `FEATURE_COUNT_GRID` and\n'
+       '`PLS_COMPONENT_GRID` define the small search spaces. Training creates rankings and '
+       'model fits;\n'
+       'validation selects FE, FS, feature count, and component count. Test and `test_extra` '
+       'are final\n'
+       'evaluation sets only.\n'}

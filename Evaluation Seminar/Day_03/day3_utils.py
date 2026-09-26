@@ -7,7 +7,8 @@ import numpy as np
 from sklearn.model_selection import GroupShuffleSplit
 
 SENSOR_GROUP = "sensorA"
-N_SUBSENSORS = 4
+SUBSENSOR_INDEX = 0
+N_SUBSENSORS = 1
 CYCLE_SAMPLES = 1440
 TARGET = "acetone"
 SEED = 42
@@ -22,24 +23,23 @@ def project_root() -> Path:
 
 
 def _load_official_part(part: str):
-    """Load all four sub-sensors and all targets from one official HDF5 split."""
+    """Load customer sub-sensor 0 and all targets from one official HDF5 split."""
     with h5py.File(project_root() / "Data" / "fullData.mat", "r") as handle:
         references = handle[f"{SENSOR_GROUP}_{part}"]
-        channels = [
-            np.asarray(handle[references[index, 0]]).T.astype(np.float32)
-            for index in range(N_SUBSENSORS)
-        ]
+        channel = np.asarray(
+            handle[references[SUBSENSOR_INDEX, 0]]
+        ).T.astype(np.float32)
         targets_group = handle[f"targets_{part}"]
         targets = {name: np.asarray(targets_group[name]).ravel() for name in targets_group}
-    # Shape: samples × parallel sub-sensors × time × one input channel.
-    X = np.stack(channels, axis=1)[..., np.newaxis]
+    # Shape: samples × one sub-sensor × time × one input channel.
+    X = channel[:, np.newaxis, :, np.newaxis]
     if X.shape[1:] != (N_SUBSENSORS, CYCLE_SAMPLES, 1):
-        raise AssertionError(f"Unexpected four-sensor shape: {X.shape}")
+        raise AssertionError(f"Unexpected single-subsensor shape: {X.shape}")
     return X, targets
 
 
-def load_four_sensor_splits(target: str = TARGET):
-    """Create leakage-safe train/validation/test splits grouped by UGM ID."""
+def load_single_subsensor_splits(target: str = TARGET):
+    """Create grouped splits using customer sub-sensor 0 only."""
     X_train, targets_train = _load_official_part("train")
     X_test, targets_test = _load_official_part("test")
     X = np.concatenate([X_train, X_test])
@@ -62,7 +62,7 @@ def load_four_sensor_splits(target: str = TARGET):
 
 
 def fit_input_zscore(X_train: np.ndarray):
-    """Learn one mean/std per sub-sensor from training samples and time points."""
+    """Learn mean and standard deviation from the training sub-sensor only."""
     mean = X_train.mean(axis=(0, 2), keepdims=True, dtype=np.float64)
     std = X_train.std(axis=(0, 2), keepdims=True, dtype=np.float64)
     std[std == 0] = 1.0
@@ -81,7 +81,7 @@ def fit_target_zscore(y_train: np.ndarray):
 
 def prepare_model_data(target: str = TARGET):
     """Load splits and apply train-only input and output Z-score transformations."""
-    splits = load_four_sensor_splits(target)
+    splits = load_single_subsensor_splits(target)
     x_mean, x_std = fit_input_zscore(splits["train"]["X"])
     y_mean, y_std = fit_target_zscore(splits["train"]["y"])
     for split in splits.values():

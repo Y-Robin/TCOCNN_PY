@@ -1,112 +1,60 @@
-# Seminar-Neuaufbau
+# Day 2 — Applied machine learning for MOS gas-sensor data
 
-Die bisherigen Notebooks im Elternordner bleiben als Referenz erhalten, gehören
-aber nicht zum neuen Ablauf.
+The notebooks in this folder form the current Day 2 course. They use the public dataset from
+[Zenodo DOI 10.5281/zenodo.6821340](https://doi.org/10.5281/zenodo.6821340).
 
-## Verbindliche Datenregeln
+## Fixed data rules
 
-- Öffentliche Quelle: Zenodo DOI 10.5281/zenodo.6821340.
-- Es wird nur Sensor A, Kanal/Sub-Sensor 0 geladen.
-- Die Sensorachse hat immer Länge 1.
-- UGM 1-500 werden gruppenweise in Train, Validation und Test geteilt.
-- Die Aufteilung der UGM 1-500 ist 64 % / 16 % / 20 %.
-- UGM 501-906 bilden ausschließlich den zusätzlichen Split test_extra.
-- Ein Zyklus derselben UGM-ID kann niemals in mehreren Splits liegen.
-- Alle Konzentrationen bleiben enthalten; es gibt keinen 300-ppb-Filter mehr.
-- Punktwahl und Korrelation verwenden ausschließlich Trainingsdaten.
-- Zulässig sind zunächst nur rohe Einzelpunkte an Temperaturphasengrenzen.
-- Jeder Export existiert mit gespeicherten Sensorwerten und mit log1p-Transformation.
+- Load Sensor A, channel/sub-sensor 0 only; the sensor dimension always has length one.
+- Split UGM 1–500 by complete UGM groups into 64% train, 16% validation, and 20% test.
+- Reserve UGM 501–906 exclusively for `test_extra`.
+- Never place cycles from one UGM ID in different grouped splits.
+- Keep all concentrations; there is no 300 ppb filter.
+- Use training data only for point selection, correlations, scaling, and learned boundaries.
+- Provide both the values stored on Zenodo and an additional `log1p` transformation.
 
-Hinweis: Zenodo beschreibt den gespeicherten Kanal bereits als logarithmischen
-Sensorwiderstand. Die Variante log1p ist daher eine zusätzliche mathematische
-Transformation der gespeicherten Werte und keine Rekonstruktion des Widerstands.
+Zenodo already describes the stored channel as logarithmic sensor resistance. The `log1p`
+variant is therefore an additional mathematical transformation, not a reconstruction of the
+original resistance.
 
-## Notebooks und Code
+## Notebook sequence
 
-Jedes Notebook enthält direkt nach der Einführung einen eigenen Abschnitt
-„Software und einstellbare Größen“. Darin werden die verwendeten NumPy-,
-SciPy-, scikit-learn-, Matplotlib-, h5py- und Python-Werkzeuge eingeordnet,
-zulässige Eingabeparameter erklärt und Train-/Validation-/Test-Grenzen
-festgehalten. Die zentrale Textquelle notebook_guides.py wird von allen
-Buildern eingebettet, damit die Lehrtexte beim Neuerzeugen erhalten bleiben.
+1. `01_Dataset_and_Single_Raw_Points.ipynb` — source data, grouped splits, temperature-boundary
+   points, training-only correlation and selectivity screening, and exports.
+2. `02_Visualizing_the_Data.ipynb` — target distributions, target correlation matrix, raw-cycle
+   bands, examples, all 48 boundary scatter plots, and single-point baseline metrics.
+3. `03_Single_Feature_Power_Law_vs_Linear_Regression.ipynb` — raw linear, log1p linear, and
+   empirical power-law calibration on one validation-selected point.
+4. `04_Multiple_Features_Power_Law_vs_Linear.ipynb` — greedy multi-point selection and the same
+   three model families using one shared feature matrix.
+5. `05_Physics_Informed_Features_Time_Constants_ALA.ipynb` — phase dynamics, tau63, Adaptive Linear
+   Approximation, Ridge models, and interpretable feature correlations.
+6. `06_Overfitting_Random_Split_vs_Unseen_UGMs.ipynb` — deliberate UGM leakage versus an
+   honest unknown-UGM test and an ordered model-complexity experiment.
+7. `07_Curse_of_Dimensionality.ipynb` — progressively overloaded k-NN, distance contrast, and
+   1,000 irrelevant control features.
+8. `08_FESR_Baseline_for_All_Gases.ipynb` — the shared single-channel FESR baseline for all ten gases:
+   equidistant/ALA extraction, Pearson/RFE-LSR selection, and PLS regression.
+9. `09_FESR_with_scikit-learn_Pipeline.ipynb` — fold-safe automatic segmentation and FESR inside a
+   scikit-learn pipeline with grouped cross-validation.
 
-- dataset_pipeline.py: Laden, Splitten, Transformieren und Exportieren.
-- 01_Datensatz_und_Einzelpunkte.ipynb: Datensatzbasis und Punktvarianten.
-- 02_Daten_visualisieren.ipynb: auswählbares Gas, Targetverteilungen,
-  Rohsignalbänder, alle 48 Gas-gegen-Punkt-Scatterplots sowie lineare
-  Einpunkt-Baselines mit R², MSE, RMSE und MAE auf allen vier Splits.
-- 03_Ein_Merkmal_Power_Law_vs_Lineare_Regression.ipynb: fairer Vergleich
-  desselben Einzelpunkts mit linearer Regression, linearer Regression auf
-  log1p(x) und einem empirischen Power Law.
-- 04_Mehrere_Merkmale_Power_Law_vs_Linear.ipynb: mehrere Rohpunkte gemeinsam,
-  greedy über Power-Law-Validierungs-RMSE gewählt, mit Vergleich gegen beide
-  multivariaten linearen Varianten. Standardmäßig zeigt Wasserstoff mit allen
-  13 Temperaturstufen ein funktionierendes Positivbeispiel.
-- 05_Physikalische_Merkmale_Zeitkonstanten_ALA.ipynb: Zeitkonstanten und
-  weitere Dynamikmerkmale für alle 24 Temperaturphasen sowie eine auf dem
-  Trainingsmedian gelernte Adaptive Lineare Approximation. Ridge-Modelle
-  vergleichen Rohgrenzpunkte, Phasendynamik, ALA und beide Merkmalsgruppen.
-- 06_Overfitting_Zufallssplit_vs_Unbekannte_UGMs.ipynb: bewusste
-  Negativdemonstration mit zeilenweisem Zufallssplit, UGM-Leakage und einem
-  separaten Test aus vollständig unbekannten UGM-IDs. Ethanol dient als
-  besonders klares Overfitting-Beispiel.
-- 07_Curse_of_Dimensionality.ipynb: distanzgewichtetes k-NN wird schrittweise
-  mit ALA, Phasendynamik, Rohsignal, Ableitungen, Spektrum und irrelevanten
-  Kontrollmerkmalen überladen. Metriken, Scatterplots und Abstandskontrast
-  zeigen die Verschlechterung bei wachsender Dimension.
-- 08_FESR_Baseline_Alle_Gase.ipynb: verbindliche Ein-Kanal-FESR-Baseline für
-  alle zehn Gase nach dem DAV³E-Prinzip. Äquidistante Segmentierung und ALA
-  liefern jeweils Mittelwert und Steigung. Pearson und RFE-LSR bilden die
-  beiden Feature-Selection-Kandidaten, PLSR übernimmt die Regression. Auswahl
-  erfolgt mit Train/Validation, beide Tests bleiben unangetastet.
-- fesr_baseline.py: wiederverwendbare Python-Implementierung der
-  FESR-Segmentierung, RFE-LSR-Auswahl und PLS-Regression.
-- physics_features.py: wiederverwendbare Extraktion der Phasen- und
-  ALA-Merkmale für genau einen Sensorkanal.
-- notebook_guides.py: notebook-spezifische Software-, Methoden- und
-  Parametererklärungen für die komplette Neuauflage.
-- _build_notebook.py und _build_visualization_notebook.py: reproduzierbare
-  Erzeugung der ersten beiden Notebooks.
-- _build_power_law_notebook.py: reproduzierbare Erzeugung von Notebook 03.
-- _build_multifeature_notebook.py: reproduzierbare Erzeugung von Notebook 04.
-- _build_physics_notebook.py: reproduzierbare Erzeugung von Notebook 05.
-- _build_overfitting_notebook.py: reproduzierbare Erzeugung von Notebook 06.
-- _build_curse_dimensionality_notebook.py: reproduzierbare Erzeugung von
-  Notebook 07.
-- _build_fesr_notebook.py: reproduzierbare Erzeugung von Notebook 08.
+Every notebook now includes direct visual checks of its inputs, split structure, feature space,
+selection path, or model behavior. Shared English explanations remain centralized in
+`notebook_guides.py`.
 
-## Verbindliche FESR-Baseline
+## Shared Python modules and exports
 
-Ab Notebook 08 gilt FESR als gemeinsame klassische Baseline. Die Resultate
-werden reproduzierbar unter Data/seminar_baselines gespeichert:
+- `dataset_pipeline.py` loads, validates, splits, transforms, and exports the dataset.
+- `physics_features.py` extracts phase and ALA features from one sensor channel.
+- `fesr_baseline.py` implements FESR segmentation, RFE-LSR selection, and PLS regression.
+- `automatic_fesr.py` implements fold-learned automatic segmentation.
+- `notebook_guides.py` contains the English software and parameter explanations.
 
-- fesr_all_gases_metrics.csv: R², MSE, RMSE und MAE für alle Splits;
-- fesr_candidate_combinations.csv: Validation- und Testmetriken aller
-  40 Kombinationen aus zehn Gasen, zwei FE- und zwei FS-Varianten;
-- fesr_selected_features.csv: ausgewählte Segmentmerkmale je Gas;
-- fesr_config.json: vollständige Ein-Kanal-Konfiguration und Suchräume.
+Run the export pipeline from the repository root:
 
-## Export
+```powershell
+.\.venv\Scripts\python.exe "Evaluation Seminar\Day_02\dataset_pipeline.py"
+```
 
-Vom Repository-Hauptordner:
-
-    .\.venv\Scripts\python.exe "Evaluation Seminar\Day_02\dataset_pipeline.py"
-
-Die Dateien liegen unter Data/seminar_point_datasets. Pro Gas und Transformation
-werden der höchstkorrelierte Punkt, der Punkt mit der größten einfachen
-Selektivitätsmarge und der beste Punkt jeder Temperaturstufe exportiert.
-
-Zusätzlich gibt es je Transformation:
-
-- all_raw_values: alle 1.440 Werte, Form (n, 1, 1440);
-- all_temperature_boundaries: alle 48 erlaubten Grenzpunkte, Form (n, 1, 48).
-
-Alle Dateien enthalten train, val, test und test_extra sowie sämtliche Gasziele,
-Feuchte, UGM-IDs und Ursprungsindizes.
-
-## FESR als scikit-learn-Pipeline
-
-- `09_FESR_mit_sklearn_Pipeline.ipynb`: transparenter Ein-Kanal-Ablauf mit
-  Segmentmerkmalen, StandardScaler, Pearson/RFE-Auswahl und PLSRegression.
-  GroupKFold und GridSearchCV lernen alle Schritte innerhalb der Trainingsfolds.
-  Separate Validierung, beide Tests, Merkmalsmarkierungen und Scatterplots sind enthalten.
+Point datasets are written to `Data/seminar_point_datasets`; FESR results are written to
+`Data/seminar_baselines`. Both regular test splits remain evaluation-only.
